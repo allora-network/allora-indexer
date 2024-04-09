@@ -17,7 +17,7 @@ Features
 Prerequisites
 -------------
 
-*   Go (version 1.16 or later) for backend development.
+*   Go (version 1.21 or later) for backend development.
 *   PostgreSQL (version 10 or later) for database management.
 *   The `allorad` command-line application for interacting with the Allora Chain.
 
