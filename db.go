@@ -26,7 +26,7 @@ type DBBlockInfo struct {
 	BlockPartSetHeaderHash     string
 	BlockVersion               string
 	ChainID                    string
-	Height                     string
+	Height                     int64
 	BlockTime                  time.Time
 	LastBlockHash              string
 	LastBlockTotalParts        int
@@ -75,7 +75,7 @@ func createBlockInfoTableSQL() string {
 		block_part_set_header_hash VARCHAR(255),
 		block_version VARCHAR(255),
 		chain_id VARCHAR(255),
-		height VARCHAR(255) PRIMARY KEY,
+		height BIGINT PRIMARY KEY,
 		block_time TIMESTAMP,
 		last_block_hash VARCHAR(255),
 		last_block_total_parts INT,
