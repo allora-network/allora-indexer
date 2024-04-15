@@ -134,7 +134,7 @@ func main() {
 				Parts: []string{"{cliApp}", "query", "consensus", "params", "--node", "{node}", "--output", "json"},
 			},
 			"decodeTx": {
-				Parts: []string{"{cliApp}", "tx", "decode", "params", "--node", "{node}", "--output", "json"},
+				Parts: []string{"{cliApp}", "tx", "decode", "{txData}", "--node", "{node}", "--output", "json"},
 			},
 		},
 	}
@@ -203,7 +203,7 @@ func processLatestBlock(config ClientConfig) {
 		fetchAndProcessBlock(config, height)
 	}
 
-	processBlock(blockInfo)
+	processBlock(config, blockInfo)
 	lastProcessedHeight = latestHeight
 }
 
@@ -235,7 +235,7 @@ func fetchAndProcessBlock(config ClientConfig, height int64) {
 	}
 
 	// Process the block information (e.g., insert into database)
-	processBlockQuery(blockQuery)
+	processBlockQuery(config, blockQuery)
 }
 
 func getLatestBlockHeightFromDB() (int64, error) {
@@ -255,7 +255,7 @@ func getLatestBlockHeightFromDB() (int64, error) {
 	return maxHeight.Int64, nil
 }
 
-func processBlockQuery(blockQuery types.BlockQuery) {
+func processBlockQuery(config ClientConfig, blockQuery types.BlockQuery) {
 	height, err := strconv.ParseInt(blockQuery.Header.Height, 10, 64)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to parse block height")
@@ -282,13 +282,25 @@ func processBlockQuery(blockQuery types.BlockQuery) {
 		ProposerAddress:            blockQuery.Header.ProposerAddress,
 	})
 
+	// Decode transactions if they exist
+	for _, tx := range blockQuery.Data.Txs {
+		txData, ok := tx.(string)
+		if !ok {
+			log.Error().Msg("Transaction data is not a string")
+			continue
+		}
+
+		// Decode the transaction
+		processTx(config, txData)
+	}
+
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to insert block info")
 	}
 
 }
 
-func processBlock(blockInfo types.BlockInfo) {
+func processBlock(config ClientConfig, blockInfo types.BlockInfo) {
 	// Process the block information (e.g., insert into database)
 	// Assuming `insertBlockInfo` is defined elsewhere
 	height, err := strconv.ParseInt(blockInfo.Block.Header.Height, 10, 64)
@@ -321,5 +333,58 @@ func processBlock(blockInfo types.BlockInfo) {
 
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to insert block info")
+	}
+}
+
+func decodeTx(config ClientConfig, txData string) (string, error) {
+	// Replace placeholder in the command with the actual transaction data
+	cmd := config.Commands["decodeTx"]
+	for i, part := range cmd.Parts {
+		if part == "{txData}" {
+			cmd.Parts[i] = txData
+			break
+		}
+	}
+
+	// Execute the decode command
+	output, err := ExecuteCommand(config.CliApp, config.Node, cmd.Parts)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to decode transaction")
+		return "", err
+	}
+
+	log.Debug().Str("output", string(output)).Msg("Decoded transaction")
+
+	// Process the decoded transaction output
+	return string(output), nil
+}
+
+func processTx(config ClientConfig, txData string) {
+	// Decode the transaction using the decodeTx function
+	decodedTxData, err := decodeTx(config, txData)
+
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to process transaction")
+	}
+
+	// Check if the decoded transaction contains specific messages and process them
+	// Assuming decodedTxData is a JSON string, unmarshal it into a suitable Go struct
+	var txMessage types.Transaction
+	err = json.Unmarshal([]byte(decodedTxData), &txMessage)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to unmarshal decoded transaction data")
+		return
+	}
+
+	// Process the decoded transaction message
+	for _, msg := range txMessage.Body.Messages {
+		switch msg.Type {
+		case "/emissions.state.v1.MsgProcessInferences":
+			// Process MsgProcessInferences
+			log.Info().Msg("Processing MsgProcessInferences...")
+			// Add your processing logic here
+		default:
+			log.Info().Str("type", msg.Type).Msg("Unknown message type")
+		}
 	}
 }

@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"time"
 
+	"github.com/allora-network/allora-cosmos-pump/types"
 	"github.com/jackc/pgx/v4"
 	"github.com/lib/pq"
+	"github.com/mitchellh/mapstructure"
 	"github.com/rs/zerolog/log"
 )
 
@@ -105,6 +108,60 @@ func createConsensusParamsTableSQL() string {
 	);`
 }
 
+func createMessagesTablesSQL() string {
+	return `
+	CREATE TABLE IF NOT EXISTS messages (
+		id SERIAL PRIMARY KEY,
+		type VARCHAR(255),
+		sender VARCHAR(255),
+		memo TEXT,
+		timeout_height VARCHAR(255)
+	);
+
+	CREATE TABLE IF NOT EXISTS inferences (
+		id SERIAL PRIMARY KEY,
+		message_id INT,
+		topic_id VARCHAR(255),
+		worker VARCHAR(255),
+		value VARCHAR(255),
+		extra_data TEXT,
+		proof TEXT,
+		FOREIGN KEY (message_id) REFERENCES messages(id)
+	);
+
+	CREATE TABLE IF NOT EXISTS signer_infos (
+		id SERIAL PRIMARY KEY,
+		auth_info_id INT,
+		public_key_id INT,
+		sequence VARCHAR(255),
+		FOREIGN KEY (auth_info_id) REFERENCES auth_info(id)
+	);
+
+	CREATE TABLE IF NOT EXISTS public_keys (
+		id SERIAL PRIMARY KEY,
+		type VARCHAR(255),
+		key TEXT
+	);
+
+	CREATE TABLE IF NOT EXISTS auth_info (
+		id SERIAL PRIMARY KEY,
+		gas_limit VARCHAR(255),
+		payer VARCHAR(255),
+		granter VARCHAR(255)
+		-- Note: Tip and Amount handling depends on their structure and is omitted here
+	);
+
+	CREATE TABLE IF NOT EXISTS transactions (
+		id SERIAL PRIMARY KEY,
+		body_id INT,
+		auth_info_id INT,
+		signature TEXT,
+		FOREIGN KEY (body_id) REFERENCES messages(id),
+		FOREIGN KEY (auth_info_id) REFERENCES auth_info(id)
+	);
+	`
+}
+
 func insertBlockInfo(blockInfo DBBlockInfo) error {
 	_, err := dbConn.Exec(context.Background(), `
 		INSERT INTO block_info (
@@ -183,4 +240,60 @@ func isUniqueViolation(err error) bool {
 		return pqErr.Code == "23505" // 23505 is the code for unique violation in PostgreSQL
 	}
 	return false
+}
+
+func insertMessageData(ctx context.Context, db *sql.DB, data types.Transaction) error {
+	// Start a transaction
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	// Insert into messages table and get the inserted ID
+	var messageID int
+	for _, msg := range data.Body.Messages {
+		if msg.Type == "/emissions.state.v1.MsgProcessInferences" {
+			// Recast to MsgProcessInferences
+			var processMsg types.MsgProcessInferences
+			err := mapstructure.Decode(msg, &processMsg)
+			if err != nil {
+				tx.Rollback()
+				return err
+			}
+
+			messageQuery := `
+				INSERT INTO messages (type, sender, memo, timeout_height)
+				VALUES ($1, $2, $3, $4)
+				RETURNING id`
+
+			// Insert message info into the database
+			err = tx.QueryRowContext(ctx, messageQuery, msg.Type, processMsg.Sender, "", "").Scan(&messageID)
+
+			if err != nil {
+				tx.Rollback()
+				return err
+			}
+
+			inferenceQuery := `INSERT INTO inferences (message_id, topic_id, worker, value, extra_data, proof)
+			VALUES ($1, $2, $3, $4, $5, $6)`
+
+			// Process each inference in the MsgProcessInferences
+			for _, inf := range processMsg.Inferences {
+				_, err = tx.ExecContext(ctx, inferenceQuery, messageID, inf.TopicID, inf.Worker, inf.Value, inf.ExtraData, inf.Proof)
+				if err != nil {
+					tx.Rollback()
+					return err
+				}
+			}
+		} else {
+			// Process other message types as necessary
+		}
+	}
+
+	// Commit the transaction
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	return nil
 }
