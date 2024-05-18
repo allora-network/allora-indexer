@@ -1,0 +1,116 @@
+package main
+
+import (
+	"context"
+	"database/sql"
+	"strconv"
+
+	"github.com/allora-network/allora-cosmos-pump/types"
+	"github.com/rs/zerolog/log"
+)
+
+//* Process topics
+type TopicOutput struct {
+	Topic types.Topic `json:"topic"`
+}
+// type ActiveTopicsOutput struct {
+// 	Topics []types.Topic `json:"topics"`
+// 	Pagination struct {
+// 		NextKey string `json: "next_key"`: "AAAAAAAAAAUAAA=="
+// 	} `json:"pagination"`
+// }
+func insertTopic(height uint64, messageId uint64, topic types.Topic) error {
+
+	// Get latest processed TX height
+	// latestTxHeight, err := getLatestTxHeightFromDB(config)
+
+	lastTopicIdStr, err := ExecuteCommandByKey[struct {NextTopicID string `json:"next_topic_id"`}](config, "nextTopicId", "--height", strconv.FormatUint(height, 10))
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to execute command")
+		return err
+	}
+	lastTopicIdStr1Back, err := ExecuteCommandByKey[struct {NextTopicID string `json:"next_topic_id"`}](config, "nextTopicId", "--height", strconv.FormatUint(height-1, 10))
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to execute command")
+		return err
+	}
+	topId1Back, err := strconv.Atoi(lastTopicIdStr1Back.NextTopicID)
+    if err != nil {
+        // ... handle error
+        panic(err)
+    }
+	topId, err := strconv.Atoi(lastTopicIdStr.NextTopicID)
+    if err != nil {
+        // ... handle error
+        panic(err)
+    }
+
+	for i := topId1Back; i < topId; i++ {
+		t, err := ExecuteCommandByKey[TopicOutput](config, "topicById", strconv.Itoa(i), "--height", strconv.FormatUint(height, 10))
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to execute command topicById in insertTopics")
+			return err
+		}
+		if topic.Metadata == t.Topic.Metadata {
+			err :=insertAddress("allora", sql.NullString{topic.Creator, true}, sql.NullString{"", false}, "")
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to insert insertMsgSend insertAddress")
+				return err
+			}
+			log.Info().Msgf("Insert topic (%s, %s) into DB...", t.Topic.TopicID, t.Topic.Metadata)
+			_, err = dbPool.Exec(context.Background(), `
+				INSERT INTO topics (
+					id,
+					creator,
+					metadata,
+					loss_logic,
+					loss_method,
+					inference_logic,
+					inference_method,
+					epoch_last_ended,
+					epoch_length,
+					ground_truth_lag,
+					default_arg,
+					pnorm,
+					alpha_regret,
+					preward_reputer,
+					preward_inference,
+					preward_forecast,
+					f_tolerance,
+					message_height,
+					message_id
+				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+				t.Topic.TopicID,
+				t.Topic.Creator,
+				t.Topic.Metadata,
+				t.Topic.LossLogic,
+				t.Topic.LossMethod,
+				t.Topic.InferenceLogic,
+				t.Topic.InferenceMethod,
+				t.Topic.EpochLastEnded,
+				t.Topic.EpochLength,
+				t.Topic.GroundTruthLag,
+				t.Topic.DefaultArg,
+				t.Topic.Pnorm,
+				t.Topic.AlphaRegret,
+				t.Topic.PrewardReputer,
+				t.Topic.PrewardInference,
+				t.Topic.PrewardForecast,
+				t.Topic.FTolerance,
+				height,
+				messageId,
+			)
+			if err != nil {
+				// if isUniqueViolation(err) {
+				// 	log.Info().Msgf("Topic %d already exists in the database. Skipping insert.", t.TopicID)
+				// 	return nil // or return an error if you prefer
+				// }
+				log.Error().Err(err).Msg("Failed to insert topic")
+				return err
+			}
+			return nil
+		}
+	}
+
+	return nil
+}
