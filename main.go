@@ -15,8 +15,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
-
-// const workersNum = 10        // Number of jobs to process
 type Command struct {
 	Parts []string
 }
@@ -42,7 +40,7 @@ func ExecuteCommand(cliApp, node string, parts []string) ([]byte, error) {
 	completeParts = replacePlaceholders(completeParts, "{node}", node)
 	completeParts = replacePlaceholders(completeParts, "{cliApp}", cliApp)
 
-	log.Info().Strs("command", completeParts).Msg("Executing command")
+	log.Debug().Strs("command", completeParts).Msg("Executing command")
 	cmd := exec.Command(completeParts[0], completeParts[1:]...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid: true,
@@ -80,7 +78,7 @@ func ExecuteCommandByKey[T any](config ClientConfig, key string, params ...strin
 		cmd.Parts = append(cmd.Parts, params...)
 	}
 
-	log.Info().Str("commandName", key).Msg("Starting execution")
+	log.Debug().Str("commandName", key).Msg("Starting execution")
 	output, err := ExecuteCommand(config.CliApp, config.Node, cmd.Parts)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to execute command")
@@ -94,7 +92,7 @@ func ExecuteCommandByKey[T any](config ClientConfig, key string, params ...strin
 		log.Error().Err(err).Str("json", string(output)).Msg("Failed to unmarshal JSON")
 		return result, err
 	}
-	// fmt.Printf("%+v\n", result)
+
 	return result, nil
 }
 
@@ -134,9 +132,6 @@ func main() {
 			"nextTopicId": {
 				Parts: []string{"{cliApp}", "query", "emissions", "next-topic-id", "--node", "{node}", "--output", "json"},
 			},
-			// "activeTopicsByHeight": {
-			// 	Parts: []string{"{cliApp}", "query", "emissions", "active-topics", "--node", "{node}", "--output", "json", "{\"limit\":\"5\"}", "--height"},
-			// },
 			"topicById": {
 				Parts: []string{"{cliApp}", "query", "emissions", "topic", "--node", "{node}", "--output", "json"},   // Requires "{topic}"
 			},
@@ -147,81 +142,26 @@ func main() {
 	initDB(connectionFlag)
 	defer closeDB()
 
-
-	// Initialize the lastProcessedHeight with the latest block height from the database
-	// var err error
-	// lastProcessedHeight, err = getLatestBlockHeightFromDB()
-	// if err != nil {
-	// 	log.Error().Err(err).Msg("Failed to get the latest block height from the database")
-	// 	return
-	// }
-
-	// Fetch and process the latest block once before starting the loop
-	// processLatestBlock(config)
-	// runParsing(config)
-	// Set up a ticker to check for new blocks every 4 seconds
-	// ticker := time.NewTicker(4 * time.Second)
-	// defer ticker.Stop()
-
 	// Set up a channel to listen for interrupt signals
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
-    heightsChan := make(chan uint64, workersNum)
-    // results := make(chan int, workersNum)
-
-	// var err error
-	// var exit bool = false
-
+	// Set up a context to cancel the workers
 	ctx, cancel := context.WithCancel(context.Background())
+
 	wgBlocks := sync.WaitGroup{}
 
-	var height uint64
-    
+	// Set up a channel to listen for block heights to process
+    heightsChan := make(chan uint64, workersNum)
+
+	println("workersNum: ", workersNum)
 	for j := uint(1); j <= workersNum; j++ {
-        // jobs <- j
-
-		go func() {
-			for height = range heightsChan {
-				wgBlocks.Add(1)
-
-				println("Processing height: ", height)
-				block, err := fetchBlock(config, height)
-				if err != nil {
-					log.Error().Err(err).Msg("Failed to fetchBlock block height")
-					break
-				}
-				err = writeBlock(config, block)
-				if err != nil {
-					log.Error().Err(err).Msg("Failed to writeBlock block height")
-					break
-				}
-
-				if len(block.Data.Txs) > 0 {
-					println("Processing txs at height: ", height)
-					time.Sleep(2 * time.Second)
-					wgTxs := sync.WaitGroup{}
-					for _, encTx := range block.Data.Txs {
-						wgTxs.Add(1)
-						println("Processing height, encTx: ", height, encTx)
-						go processTx(&wgTxs, height, encTx)
-					}
-					wgTxs.Wait()
-
-					time.Sleep(10 * time.Second)
-				}
-				wgBlocks.Done()
-
-				select {
-				case <-ctx.Done():
-					break
-				default:
-					continue
-				}
-			}
-		}()
+		wgBlocks.Add(1)
+		go worker(&wgBlocks, heightsChan)
 	}
 
+	// Emit heights to process into channel
+	// Todo we can listen for new blocks via websocket and emit them to the channel
 	go func() {
 		lastProcessedHeight, err := getLatestBlockHeightFromDB()
 		if err != nil {
@@ -234,11 +174,12 @@ func main() {
 			return
 		}
 		println("lastProcessedHeight: ", lastProcessedHeight,	", chainLatestHeight: ", chainLatestHeight)
-	
+		// Emit heights to process into channel
 		for w := lastProcessedHeight; w <= chainLatestHeight; w++ {
 			select {
 			case <-ctx.Done():
-				break
+				close(heightsChan)
+				return
 			default:
 				println("Sending height to heightsChan", w)
 				heightsChan <- w
@@ -248,79 +189,45 @@ func main() {
 
 	}()
 
-
-    // close(jobs)
-
-    // for a := 1; a <= workersNum; a++ {
-    //     <-results
-    // }
-
-
-
 	for {
 		select {
-
-
-		// case height := <-heightsChan:
-		// 	wgBlocks.Add(1)
-		// 	go func() {
-		// 		defer wgBlocks.Done()
-		// 		block, err := fetchBlock(config, height)
-		// 		if err != nil {
-		// 			log.Error().Err(err).Msg("Failed to fetchBlock block height")
-		// 			return
-		// 		}
-		// 		err = writeBlock(config, block)
-
-		// 		wgTxs.Add(len(block.Data.Txs))
-		// 		for _, encTx := range block.Data.Txs {
-		// 			go processTx(&wgTxs, height, encTx)
-		// 		}
-		// 		wgTxs.Wait()
-
-		// 	}()
-
-
-		// case <-ticker.C:
-		// 	runParsing(config)
-
-
 		case <-signalChan:
 			log.Info().Msg("Shutdown signal received, exiting...")
 			cancel()
 
 			wgBlocks.Wait() // Wait for all workers to finish
-			close(heightsChan)
 			return
 		}
 	}
 
 }
 
-// func runParsing(config ClientConfig) {
+func worker(wgBlocks *sync.WaitGroup, heightsChan <-chan uint64){
+	defer wgBlocks.Done()
+	for height := range heightsChan {
+		log.Info().Msgf("Processing height: %d", height)
+		block, err := fetchBlock(config, height)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to fetchBlock block height")
+			break
+		}
+		log.Info().Msgf("fetchBlock height: %d, len(TXs): %d", height, len(block.Data.Txs))
+		err = writeBlock(config, block)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to writeBlock block height")
+			break
+		}
+		log.Info().Msgf("Write height: %d", height)
 
-// 	switch config.Mode {
-// 	case "txs":
-// 		// Process MsgProcessInferences
-// 		log.Info().Msg("Processing Load topics...")
-// 		// processTopics(config)
-
-// 		log.Info().Msg("Processing encoded TXs...")
-// 		processTxs(config)
-// 		// Add your processing logic here
-// 	case "consensus":
-// 		// Process MsgProcessInferences
-// 		log.Info().Msg("Processing consensus...")
-// 		// get the latest consensus params in the block
-// 		processConsensusParams(config)
-// 	case "blocks":
-// 		// Process MsgProcessInferences
-// 		log.Info().Msg("Processing blocks...")
-// 		// println("Processing blocks...", lastProcessedHeight)
-// 		processLatestBlock(config)
-// 	default:
-// 		log.Info().Msg("Unknown mode, supported modes are blocks, txs, consensus")
-// 	}
-
-// }
-
+		if len(block.Data.Txs) > 0 {
+			log.Info().Msgf("Processing txs at height: %d", height)
+			wgTxs := sync.WaitGroup{}
+			for _, encTx := range block.Data.Txs {
+				wgTxs.Add(1)
+				log.Info().Msgf("Processing height: %d, encTx: %s", height, encTx)
+				go processTx(&wgTxs, height, encTx)
+			}
+			wgTxs.Wait()
+		}
+	}
+}

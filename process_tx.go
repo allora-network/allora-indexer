@@ -11,36 +11,10 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// func processTxs(config ClientConfig) {
-
-// 	// Use sql.NullInt64 which can handle NULL values
-// 	var encTx string
-// 	var height uint64
-// 	rows, err := dbPool.Query(context.Background(), "SELECT height, encoded_tx FROM block_txs LIMIT 10")
-// 	if err != nil {
-// 		fmt.Errorf("failed to query SELECT encoded_tx FROM block_txs LIMIT 10: %v", err)
-// 	}
-// 	defer rows.Close()
-
-// 	for rows.Next() {
-// 		err := rows.Scan(&height, &encTx)
-// 		if err != nil {
-// 			log.Fatal().Err(err)
-// 		}
-// 		// decodedTxData, err := decodeTx(config, encTx)
-// 		// if err != nil {
-// 		// 	log.Error().Err(err).Msg("Failed to process transaction")
-// 		// }
-// 		processTx(config, height, encTx)
-// 	}
-
-// }
-
 func processTx(wg *sync.WaitGroup, height uint64, txData string) {
-	// wgTxs.Add(1)
 	defer wg.Done()
-	// Decode the transaction using the decodeTx function
 
+	// Decode the transaction using the decodeTx function
 	txMessage, err := ExecuteCommandByKey[types.Tx](config, "decodeTx", txData)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to execute command")
@@ -66,9 +40,10 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 		}
 
 		var messageId uint64
+		log.Info().Msgf("Inserting message, height: %d", height)
 		messageId, err = insertMessage(height, mtype, creator, string(mjson))
 		if err != nil {
-			log.Error().Err(err).Msg("Failed to insertMessage")
+			log.Error().Err(err).Msgf("Failed to insertMessage, height: %d", height)
 		}
 
 		switch mtype {
@@ -109,8 +84,6 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 			var msgRegister types.MsgRegister
 			json.Unmarshal(mjson, &msgRegister)
 			insertMsgRegister(height, messageId, msgRegister)
-
-	//! WIP below                                                  
 
 		default:
 			log.Info().Str("type", mtype).Msg("Unknown message type")

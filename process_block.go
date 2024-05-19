@@ -68,6 +68,7 @@ func writeBlock(config ClientConfig, blockQuery types.BlockQuery) (error) {
 		return err
 	}
 
+	log.Info().Msgf("Inserting block, height: %d", height)
 	err = insertBlockInfo(DBBlockInfo{
 		BlockHash:                  blockQuery.Header.LastBlockID.Hash,
 		BlockTime:                  blockQuery.Header.Time,
@@ -87,18 +88,14 @@ func writeBlock(config ClientConfig, blockQuery types.BlockQuery) (error) {
 		EvidenceHash:               blockQuery.Header.EvidenceHash,
 		ProposerAddress:            blockQuery.Header.ProposerAddress,
 	})
-
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to insert block info")
 		return err
 	}
 
-	return nil
+	log.Info().Msgf("Inserted block, height: %d", height)
 
-	// err = insertEncTxs(height, blockQuery.Data.Txs)
-	// if err != nil {
-	// 	log.Error().Err(err).Msg("Failed to insert Txs")
-	// }
+	return nil
 
 }
 
@@ -118,29 +115,3 @@ func getLatestBlockHeightFromDB() (uint64, error) {
 
 	return uint64(maxHeight.Int64), nil
 }
-
-// func processLatestBlock(config ClientConfig) {
-// 	blockInfo, err := ExecuteCommandByKey[types.BlockInfo](config, "latestBlock")
-// 	if err != nil {
-// 		log.Error().Err(err).Msg("Failed to fetch the latest block")
-// 		return
-// 	}
-
-// 	latestHeight, err := strconv.ParseUint(blockInfo.Block.Header.Height, 10, 64)
-// 	if err != nil {
-// 		log.Error().Err(err).Msg("Failed to parse latest block height")
-// 		return
-// 	}
-
-// 	for height := lastProcessedHeight + 1; height < latestHeight; height++ {
-// 		block, err := fetchBlock(config, height)
-// 		if err != nil {
-// 			log.Error().Err(err).Msg("Failed to fetchBlock block height")
-// 			return
-// 		}
-// 		writeBlock(config, block)
-// 		lastProcessedHeight = latestHeight
-// 	}
-
-// }
-

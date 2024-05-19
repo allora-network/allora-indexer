@@ -13,16 +13,9 @@ import (
 type TopicOutput struct {
 	Topic types.Topic `json:"topic"`
 }
-// type ActiveTopicsOutput struct {
-// 	Topics []types.Topic `json:"topics"`
-// 	Pagination struct {
-// 		NextKey string `json: "next_key"`: "AAAAAAAAAAUAAA=="
-// 	} `json:"pagination"`
-// }
-func insertTopic(height uint64, messageId uint64, topic types.Topic) error {
 
-	// Get latest processed TX height
-	// latestTxHeight, err := getLatestTxHeightFromDB(config)
+
+func insertTopic(height uint64, messageId uint64, topic types.Topic) error {
 
 	lastTopicIdStr, err := ExecuteCommandByKey[struct {NextTopicID string `json:"next_topic_id"`}](config, "nextTopicId", "--height", strconv.FormatUint(height, 10))
 	if err != nil {
@@ -101,10 +94,6 @@ func insertTopic(height uint64, messageId uint64, topic types.Topic) error {
 				messageId,
 			)
 			if err != nil {
-				// if isUniqueViolation(err) {
-				// 	log.Info().Msgf("Topic %d already exists in the database. Skipping insert.", t.TopicID)
-				// 	return nil // or return an error if you prefer
-				// }
 				log.Error().Err(err).Msg("Failed to insert topic")
 				return err
 			}
