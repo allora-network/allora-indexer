@@ -27,7 +27,7 @@ type DBBlockInfo struct {
 	BlockPartSetHeaderHash     string
 	BlockVersion               string
 	ChainID                    string
-	Height                     int64
+	Height                     uint64
 	BlockTime                  time.Time
 	LastBlockHash              string
 	LastBlockTotalParts        int
@@ -103,15 +103,15 @@ func createBlockInfoTableSQL() string {
 		last_results_hash VARCHAR(255),
 		evidence_hash VARCHAR(255),
 		proposer_address VARCHAR(255)
-	);
-
-	CREATE TABLE IF NOT EXISTS block_txs (
-		height BIGINT,
-		encoded_tx TEXT,
-		FOREIGN KEY (height) REFERENCES block_info(height)
 	);`
 }
 
+
+// CREATE TABLE IF NOT EXISTS block_txs (
+// 	height BIGINT,
+// 	encoded_tx TEXT,
+// 	FOREIGN KEY (height) REFERENCES block_info(height)
+// );
 func createConsensusParamsTableSQL() string {
 	return `
 	CREATE TABLE IF NOT EXISTS consensus_params (
@@ -325,23 +325,23 @@ func insertBlockInfo(blockInfo DBBlockInfo) error {
 	return nil
 }
 
-func insertEncTxs(height int64, txs []string) error {
-	// Write decoded Txs to the database
-	for _, tx := range txs {
-		_, err := dbPool.Exec(context.Background(), `
-			INSERT INTO block_txs (
-				height,
-				encoded_tx
-			) VALUES ($1, $2)`,
-			height, tx,
-		)
-		if err != nil {
-			return err
-		}
-	}
+// func insertEncTxs(height int64, txs []string) error {
+// 	// Write decoded Txs to the database
+// 	for _, tx := range txs {
+// 		_, err := dbPool.Exec(context.Background(), `
+// 			INSERT INTO block_txs (
+// 				height,
+// 				encoded_tx
+// 			) VALUES ($1, $2)`,
+// 			height, tx,
+// 		)
+// 		if err != nil {
+// 			return err
+// 		}
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
 func insertMessage(height uint64, mtype string, sender string, data string) (uint64, error) {
 	// Write Topic to the database

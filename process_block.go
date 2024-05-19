@@ -12,34 +12,24 @@ import (
 )
 
 
-func processLatestBlock(config ClientConfig) {
+func getLatestHeight() (uint64, error) {
 	blockInfo, err := ExecuteCommandByKey[types.BlockInfo](config, "latestBlock")
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to fetch the latest block")
-		return
+		return 0, err
 	}
 
-	latestHeight, err := strconv.ParseInt(blockInfo.Block.Header.Height, 10, 64)
+	latestHeight, err := strconv.ParseUint(blockInfo.Block.Header.Height, 10, 64)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to parse latest block height")
-		return
+		return 0, err
 	}
-
-	for height := lastProcessedHeight + 1; height < latestHeight; height++ {
-		block, err := fetchBlock(config, height)
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to fetchBlock block height")
-			return
-		}
-		writeBlock(config, block)
-		lastProcessedHeight = latestHeight
-	}
-
+	return uint64(latestHeight), nil
 }
 
-func fetchBlock(config ClientConfig, height int64) (types.BlockQuery, error){
+func fetchBlock(config ClientConfig, height uint64) (types.BlockQuery, error){
 	// Convert height to string
-	heightStr := strconv.FormatInt(height, 10)
+	heightStr := strconv.FormatUint(height, 10)
 
 	// Clone the original command and replace {height} placeholder
 	blockCommand := make([]string, len(config.Commands["blockByHeight"].Parts))
@@ -69,30 +59,13 @@ func fetchBlock(config ClientConfig, height int64) (types.BlockQuery, error){
 	// processBlockQuery(config, blockQuery)
 }
 
-func getLatestBlockHeightFromDB() (int64, error) {
-	// Use sql.NullInt64 which can handle NULL values
-	var maxHeight sql.NullInt64
-	err := dbPool.QueryRow(context.Background(), "SELECT MAX(height) FROM block_info").Scan(&maxHeight)
-	if err != nil {
-		return 0, fmt.Errorf("failed to query the latest block height: %v", err)
-	}
-
-	// Check if maxHeight is valid (not NULL)
-	if !maxHeight.Valid {
-		// No valid maxHeight found, probably because there are no entries in the table
-		return 0, nil // Returning 0 is safe if you treat it as "start from the beginning"
-	}
-
-	return maxHeight.Int64, nil
-}
-
-func writeBlock(config ClientConfig, blockQuery types.BlockQuery) {
+func writeBlock(config ClientConfig, blockQuery types.BlockQuery) (error) {
 	// Process the block information (e.g., insert into database)
 	// Assuming `insertBlockInfo` is defined elsewhere
-	height, err := strconv.ParseInt(blockQuery.Header.Height, 10, 64)
+	height, err := strconv.ParseUint(blockQuery.Header.Height, 10, 64)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to parse block height")
-		return
+		return err
 	}
 
 	err = insertBlockInfo(DBBlockInfo{
@@ -117,11 +90,57 @@ func writeBlock(config ClientConfig, blockQuery types.BlockQuery) {
 
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to insert block info")
+		return err
 	}
 
-	err = insertEncTxs(height, blockQuery.Data.Txs)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to insert Txs")
-	}
+	return nil
+
+	// err = insertEncTxs(height, blockQuery.Data.Txs)
+	// if err != nil {
+	// 	log.Error().Err(err).Msg("Failed to insert Txs")
+	// }
 
 }
+
+func getLatestBlockHeightFromDB() (uint64, error) {
+	// Use sql.NullInt64 which can handle NULL values
+	var maxHeight sql.NullInt64
+	err := dbPool.QueryRow(context.Background(), "SELECT MAX(height) FROM block_info").Scan(&maxHeight)
+	if err != nil {
+		return 0, fmt.Errorf("failed to query the latest block height: %v", err)
+	}
+
+	// Check if maxHeight is valid (not NULL)
+	if !maxHeight.Valid {
+		// No valid maxHeight found, probably because there are no entries in the table
+		return 0, nil // Returning 0 is safe if you treat it as "start from the beginning"
+	}
+
+	return uint64(maxHeight.Int64), nil
+}
+
+// func processLatestBlock(config ClientConfig) {
+// 	blockInfo, err := ExecuteCommandByKey[types.BlockInfo](config, "latestBlock")
+// 	if err != nil {
+// 		log.Error().Err(err).Msg("Failed to fetch the latest block")
+// 		return
+// 	}
+
+// 	latestHeight, err := strconv.ParseUint(blockInfo.Block.Header.Height, 10, 64)
+// 	if err != nil {
+// 		log.Error().Err(err).Msg("Failed to parse latest block height")
+// 		return
+// 	}
+
+// 	for height := lastProcessedHeight + 1; height < latestHeight; height++ {
+// 		block, err := fetchBlock(config, height)
+// 		if err != nil {
+// 			log.Error().Err(err).Msg("Failed to fetchBlock block height")
+// 			return
+// 		}
+// 		writeBlock(config, block)
+// 		lastProcessedHeight = latestHeight
+// 	}
+
+// }
+

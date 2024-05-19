@@ -4,39 +4,41 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"strconv"
+	"sync"
 
 	"github.com/allora-network/allora-cosmos-pump/types"
 	"github.com/rs/zerolog/log"
 )
 
-func processTxs(config ClientConfig) {
+// func processTxs(config ClientConfig) {
 
-	// Use sql.NullInt64 which can handle NULL values
-	var encTx string
-	var height uint64
-	rows, err := dbPool.Query(context.Background(), "SELECT height, encoded_tx FROM block_txs LIMIT 10")
-	if err != nil {
-		fmt.Errorf("failed to query SELECT encoded_tx FROM block_txs LIMIT 10: %v", err)
-	}
-	defer rows.Close()
+// 	// Use sql.NullInt64 which can handle NULL values
+// 	var encTx string
+// 	var height uint64
+// 	rows, err := dbPool.Query(context.Background(), "SELECT height, encoded_tx FROM block_txs LIMIT 10")
+// 	if err != nil {
+// 		fmt.Errorf("failed to query SELECT encoded_tx FROM block_txs LIMIT 10: %v", err)
+// 	}
+// 	defer rows.Close()
 
-	for rows.Next() {
-		err := rows.Scan(&height, &encTx)
-		if err != nil {
-			log.Fatal().Err(err)
-		}
-		// decodedTxData, err := decodeTx(config, encTx)
-		// if err != nil {
-		// 	log.Error().Err(err).Msg("Failed to process transaction")
-		// }
-		processTx(config, height, encTx)
-	}
+// 	for rows.Next() {
+// 		err := rows.Scan(&height, &encTx)
+// 		if err != nil {
+// 			log.Fatal().Err(err)
+// 		}
+// 		// decodedTxData, err := decodeTx(config, encTx)
+// 		// if err != nil {
+// 		// 	log.Error().Err(err).Msg("Failed to process transaction")
+// 		// }
+// 		processTx(config, height, encTx)
+// 	}
 
-}
+// }
 
-func processTx(config ClientConfig, height uint64, txData string) {
+func processTx(wg *sync.WaitGroup, height uint64, txData string) {
+	// wgTxs.Add(1)
+	defer wg.Done()
 	// Decode the transaction using the decodeTx function
 
 	txMessage, err := ExecuteCommandByKey[types.Tx](config, "decodeTx", txData)
@@ -109,9 +111,6 @@ func processTx(config ClientConfig, height uint64, txData string) {
 			insertMsgRegister(height, messageId, msgRegister)
 
 	//! WIP below                                                  
-
-
-
 
 		default:
 			log.Info().Str("type", mtype).Msg("Unknown message type")
