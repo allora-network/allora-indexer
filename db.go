@@ -106,12 +106,6 @@ func createBlockInfoTableSQL() string {
 	);`
 }
 
-
-// CREATE TABLE IF NOT EXISTS block_txs (
-// 	height BIGINT,
-// 	encoded_tx TEXT,
-// 	FOREIGN KEY (height) REFERENCES block_info(height)
-// );
 func createConsensusParamsTableSQL() string {
 	return `
 	CREATE TABLE IF NOT EXISTS consensus_params (
@@ -375,7 +369,6 @@ func isUniqueViolation(err error) bool {
 	// For example, with PostgreSQL using pq driver:
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
-		println("pgErr.Code: ", pgErr.Code)
 		return pgErr.Code == "23505" // 23505 is the code for unique violation in PostgreSQL
 	}
 	return false

@@ -154,7 +154,6 @@ func main() {
 	// Set up a channel to listen for block heights to process
     heightsChan := make(chan uint64, workersNum)
 
-	println("workersNum: ", workersNum)
 	for j := uint(1); j <= workersNum; j++ {
 		wgBlocks.Add(1)
 		go worker(&wgBlocks, heightsChan)
@@ -173,7 +172,6 @@ func main() {
 			log.Error().Err(err).Msg("Failed to getLatestHeight")
 			return
 		}
-		println("lastProcessedHeight: ", lastProcessedHeight,	", chainLatestHeight: ", chainLatestHeight)
 		// Emit heights to process into channel
 		for w := lastProcessedHeight; w <= chainLatestHeight; w++ {
 			select {
@@ -181,7 +179,6 @@ func main() {
 				close(heightsChan)
 				return
 			default:
-				println("Sending height to heightsChan", w)
 				heightsChan <- w
 			}
 		}
