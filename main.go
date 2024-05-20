@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -104,12 +103,14 @@ func main() {
 		nodeFlag       string
 		cliAppFlag     string
 		connectionFlag string
+		exitWhenCaughtUp bool
 	)
 
 	flag.UintVar(&workersNum, "workersNum", 5, "Number of workers to process blocks concurrently")
 	flag.StringVar(&nodeFlag, "node", "https://allora-rpc.devnet.behindthecurtain.xyz:443", "Node address") //# https://default-node-address:443",
 	flag.StringVar(&cliAppFlag, "cliApp", "allorad", "CLI app to execute commands")
 	flag.StringVar(&connectionFlag, "conn", "postgres://pump:pump@localhost:5432/pump", "Database connection string")
+	flag.BoolVar(&exitWhenCaughtUp, "exitWhenCaughtUp", true, "Exit when last block is processed. If false will keep processing new blocks.")
 	flag.Parse()
 
 	// define the commands to execute payloads
@@ -146,9 +147,6 @@ func main() {
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
-	// Set up a context to cancel the workers
-	ctx, cancel := context.WithCancel(context.Background())
-
 	wgBlocks := sync.WaitGroup{}
 
 	// Set up a channel to listen for block heights to process
@@ -161,7 +159,7 @@ func main() {
 
 	// Emit heights to process into channel
 	// Todo we can listen for new blocks via websocket and emit them to the channel
-	go func() {
+	for{
 		lastProcessedHeight, err := getLatestBlockHeightFromDB()
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to getLatestBlockHeightFromDB")
@@ -176,27 +174,23 @@ func main() {
 		// Emit heights to process into channel
 		for w := lastProcessedHeight; w <= chainLatestHeight; w++ {
 			select {
-			case <-ctx.Done():
-				close(heightsChan)
+			case <-signalChan:
+				log.Info().Msg("Shutdown signal received, exiting...")
+				// cancel()
 				return
 			default:
 				heightsChan <- w
 			}
 		}
-		time.Sleep(5 * time.Second)
-
-	}()
-
-	for {
-		select {
-		case <-signalChan:
-			log.Info().Msg("Shutdown signal received, exiting...")
-			cancel()
-
-			wgBlocks.Wait() // Wait for all workers to finish
+		log.Info().Msg("All blocks processed...")
+		if exitWhenCaughtUp {
 			return
 		}
+		time.Sleep(5 * time.Second)
 	}
+	close(heightsChan)
+	wgBlocks.Wait() // Wait for all workers to finish
+	log.Info().Msg("All workers finished")
 
 }
 
