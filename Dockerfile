@@ -1,15 +1,8 @@
 # node build
-from golang:1.21.7-bookworm as gobuilder
+from golang:1.22-bookworm as gobuilder
 WORKDIR /
-RUN apt-get update && apt-get install -y curl
+# RUN apt-get update && apt-get install -y curl
 
-# Detect the architecture and download the appropriate binary
-ARG TARGETARCH
-RUN if [ "$TARGETARCH" = "arm64" ]; then \
-        curl -L https://github.com/allora-network/allora-chain/releases/download/v0.0.10/allorad_linux_arm64 -o /usr/local/bin/allorad; \
-    else \
-        curl -L https://github.com/allora-network/allora-chain/releases/download/v0.0.10/allorad_linux_amd64 -o /usr/local/bin/allorad; \
-    fi
 
 COPY . .
 RUN go build .
