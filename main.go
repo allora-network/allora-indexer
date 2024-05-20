@@ -1,26 +1,19 @@
 package main
 
 import (
-	"context"
-	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"os/exec"
 	"os/signal"
-	"strconv"
-	"strings"
+	"sync"
 	"syscall"
 	"time"
 
-	"github.com/allora-network/allora-cosmos-pump/types"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
-
-var lastProcessedHeight int64 = 0
-
 type Command struct {
 	Parts []string
 }
@@ -30,6 +23,8 @@ type ClientConfig struct {
 	CliApp   string
 	Commands map[string]Command
 }
+var config ClientConfig
+var workersNum	   uint
 
 func ExecuteCommand(cliApp, node string, parts []string) ([]byte, error) {
 	if len(parts) == 0 {
@@ -44,8 +39,11 @@ func ExecuteCommand(cliApp, node string, parts []string) ([]byte, error) {
 	completeParts = replacePlaceholders(completeParts, "{node}", node)
 	completeParts = replacePlaceholders(completeParts, "{cliApp}", cliApp)
 
-	log.Info().Strs("command", completeParts).Msg("Executing command")
+	log.Debug().Strs("command", completeParts).Msg("Executing command")
 	cmd := exec.Command(completeParts[0], completeParts[1:]...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+	}
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Error().Err(err).Str("output", string(output)).Msg("Command execution failed")
@@ -67,7 +65,7 @@ func replacePlaceholders(parts []string, placeholder, value string) []string {
 	return replacedParts
 }
 
-func ExecuteCommandByKey[T any](config ClientConfig, key string) (T, error) {
+func ExecuteCommandByKey[T any](config ClientConfig, key string, params ...string) (T, error) {
 	var result T
 
 	cmd, ok := config.Commands[key]
@@ -75,7 +73,11 @@ func ExecuteCommandByKey[T any](config ClientConfig, key string) (T, error) {
 		return result, fmt.Errorf("command not found")
 	}
 
-	log.Info().Str("commandName", key).Msg("Starting execution")
+	if len(params) > 0 {
+		cmd.Parts = append(cmd.Parts, params...)
+	}
+
+	log.Debug().Str("commandName", key).Msg("Starting execution")
 	output, err := ExecuteCommand(config.CliApp, config.Node, cmd.Parts)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to execute command")
@@ -94,33 +96,25 @@ func ExecuteCommandByKey[T any](config ClientConfig, key string) (T, error) {
 }
 
 func main() {
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+
 	var (
 		nodeFlag       string
 		cliAppFlag     string
 		connectionFlag string
+		exitWhenCaughtUp bool
 	)
 
-	flag.StringVar(&nodeFlag, "node", "https://default-node-address:443", "Node address")
-	flag.StringVar(&cliAppFlag, "cliApp", "simd", "CLI app to execute commands")
-	flag.StringVar(&connectionFlag, "conn", "postgres://default:password@localhost:5432/database", "Database connection string")
+	flag.UintVar(&workersNum, "workersNum", 5, "Number of workers to process blocks concurrently")
+	flag.StringVar(&nodeFlag, "node", "https://allora-rpc.devnet.behindthecurtain.xyz:443", "Node address") //# https://default-node-address:443",
+	flag.StringVar(&cliAppFlag, "cliApp", "allorad", "CLI app to execute commands")
+	flag.StringVar(&connectionFlag, "conn", "postgres://pump:pump@localhost:5432/pump", "Database connection string")
+	flag.BoolVar(&exitWhenCaughtUp, "exitWhenCaughtUp", true, "Exit when last block is processed. If false will keep processing new blocks.")
 	flag.Parse()
 
-	initDB(connectionFlag)
-	defer closeDB()
-
-	// Initialize the lastProcessedHeight with the latest block height from the database
-	var err error
-	lastProcessedHeight, err = getLatestBlockHeightFromDB()
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to get the latest block height from the database")
-		return
-	}
-
-	zerolog.SetGlobalLevel(zerolog.InfoLevel)
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
-
 	// define the commands to execute payloads
-	config := ClientConfig{
+	config = ClientConfig{
 		Node:   nodeFlag,
 		CliApp: cliAppFlag,
 		Commands: map[string]Command{
@@ -128,263 +122,104 @@ func main() {
 				Parts: []string{"{cliApp}", "query", "consensus", "comet", "block-latest", "--node", "{node}", "--output", "json"},
 			},
 			"blockByHeight": { // Add a template command for fetching blocks by height
-				Parts: []string{"{cliApp}", "query", "block", "{height}", "--type=height", "--node", "{node}", "--output", "json"},
+				Parts: []string{"{cliApp}", "query", "block", "--type=height", "--node", "{node}", "--output", "json", "{height}"},
 			},
 			"consensusParams": {
 				Parts: []string{"{cliApp}", "query", "consensus", "params", "--node", "{node}", "--output", "json"},
 			},
 			"decodeTx": {
-				Parts: []string{"{cliApp}", "tx", "decode", "{txData}", "--node", "{node}", "--output", "json"},
+				Parts: []string{"{cliApp}", "tx", "decode", "--node", "{node}", "--output", "json"},   // Requires , "{txData}"
+			},
+			"nextTopicId": {
+				Parts: []string{"{cliApp}", "query", "emissions", "next-topic-id", "--node", "{node}", "--output", "json"},
+			},
+			"topicById": {
+				Parts: []string{"{cliApp}", "query", "emissions", "topic", "--node", "{node}", "--output", "json"},   // Requires "{topic}"
 			},
 		},
 	}
 
-	// get the latest consensus params in the block
-	processConsensusParams(config)
-
-	// Fetch and process the latest block once before starting the loop
-	processLatestBlock(config)
-
-	// Set up a ticker to check for new blocks every 4 seconds
-	ticker := time.NewTicker(4 * time.Second)
-	defer ticker.Stop()
+	// Init DB
+	initDB(connectionFlag)
+	defer closeDB()
 
 	// Set up a channel to listen for interrupt signals
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
-	for {
-		select {
-		case <-ticker.C:
-			processLatestBlock(config)
-		case <-signalChan:
-			log.Info().Msg("Shutdown signal received, exiting...")
+	wgBlocks := sync.WaitGroup{}
+
+	// Set up a channel to listen for block heights to process
+    heightsChan := make(chan uint64, workersNum)
+
+	for j := uint(1); j <= workersNum; j++ {
+		wgBlocks.Add(1)
+		go worker(&wgBlocks, heightsChan)
+	}
+
+	// Emit heights to process into channel
+	// Todo we can listen for new blocks via websocket and emit them to the channel
+	for{
+		lastProcessedHeight, err := getLatestBlockHeightFromDB()
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to getLatestBlockHeightFromDB")
 			return
 		}
-	}
-}
-
-func processConsensusParams(config ClientConfig) {
-	consensusParams, err := ExecuteCommandByKey[types.ConsensusParams](config, "consensusParams")
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to execute command")
-		return
-	}
-
-	err = insertConsensusParams(DBConsensusParams{
-		MaxBytes:         consensusParams.Params.Block.MaxBytes,
-		MaxGas:           consensusParams.Params.Block.MaxGas,
-		MaxAgeDuration:   consensusParams.Params.Evidence.MaxAgeDuration,
-		MaxAgeNumBlocks:  consensusParams.Params.Evidence.MaxAgeNumBlocks,
-		EvidenceMaxBytes: consensusParams.Params.Evidence.MaxBytes,
-		PubKeyTypes:      strings.Join(consensusParams.Params.Validator.PubKeyTypes, ","),
-	})
-
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to execute command")
-		return
-	}
-}
-
-func processLatestBlock(config ClientConfig) {
-	blockInfo, err := ExecuteCommandByKey[types.BlockInfo](config, "latestBlock")
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to fetch the latest block")
-		return
-	}
-
-	latestHeight, err := strconv.ParseInt(blockInfo.Block.Header.Height, 10, 64)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to parse latest block height")
-		return
-	}
-
-	for height := lastProcessedHeight + 1; height < latestHeight; height++ {
-		fetchAndProcessBlock(config, height)
-	}
-
-	processBlock(config, blockInfo)
-	lastProcessedHeight = latestHeight
-}
-
-func fetchAndProcessBlock(config ClientConfig, height int64) {
-	// Convert height to string
-	heightStr := strconv.FormatInt(height, 10)
-
-	// Clone the original command and replace {height} placeholder
-	blockCommand := make([]string, len(config.Commands["blockByHeight"].Parts))
-	copy(blockCommand, config.Commands["blockByHeight"].Parts)
-	for i, part := range blockCommand {
-		if part == "{height}" {
-			blockCommand[i] = heightStr
+		chainLatestHeight, err := getLatestHeight()
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to getLatestHeight")
+			return
 		}
-	}
-
-	// Execute the command with the updated height
-	log.Info().Str("commandName", "blockByHeight").Msgf("Fetching block at height %s", heightStr)
-	output, err := ExecuteCommand(config.CliApp, config.Node, blockCommand)
-	if err != nil {
-		log.Error().Err(err).Msgf("Failed to fetch block at height %s", heightStr)
-		return
-	}
-
-	var blockQuery types.BlockQuery
-	if err := json.Unmarshal(output, &blockQuery); err != nil {
-		log.Error().Err(err).Msg("Failed to unmarshal block info")
-		return
-	}
-
-	// Process the block information (e.g., insert into database)
-	processBlockQuery(config, blockQuery)
-}
-
-func getLatestBlockHeightFromDB() (int64, error) {
-	// Use sql.NullInt64 which can handle NULL values
-	var maxHeight sql.NullInt64
-	err := dbConn.QueryRow(context.Background(), "SELECT MAX(height) FROM block_info").Scan(&maxHeight)
-	if err != nil {
-		return 0, fmt.Errorf("failed to query the latest block height: %v", err)
-	}
-
-	// Check if maxHeight is valid (not NULL)
-	if !maxHeight.Valid {
-		// No valid maxHeight found, probably because there are no entries in the table
-		return 0, nil // Returning 0 is safe if you treat it as "start from the beginning"
-	}
-
-	return maxHeight.Int64, nil
-}
-
-func processBlockQuery(config ClientConfig, blockQuery types.BlockQuery) {
-	height, err := strconv.ParseInt(blockQuery.Header.Height, 10, 64)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to parse block height")
-		return
-	}
-
-	err = insertBlockInfo(DBBlockInfo{
-		BlockHash:                  blockQuery.Header.LastBlockID.Hash,
-		BlockTime:                  blockQuery.Header.Time,
-		BlockVersion:               blockQuery.Header.Version.Block,
-		ChainID:                    blockQuery.Header.ChainID,
-		Height:                     height,
-		LastBlockHash:              blockQuery.Header.LastBlockID.Hash,
-		LastBlockTotalParts:        blockQuery.Header.LastBlockID.PartSetHeader.Total,
-		LastBlockPartSetHeaderHash: blockQuery.Header.LastBlockID.PartSetHeader.Hash,
-		LastCommitHash:             blockQuery.Header.LastCommitHash,
-		DataHash:                   blockQuery.Header.DataHash,
-		ValidatorsHash:             blockQuery.Header.ValidatorsHash,
-		NextValidatorsHash:         blockQuery.Header.NextValidatorsHash,
-		ConsensusHash:              blockQuery.Header.ConsensusHash,
-		AppHash:                    blockQuery.Header.AppHash,
-		LastResultsHash:            blockQuery.Header.LastResultsHash,
-		EvidenceHash:               blockQuery.Header.EvidenceHash,
-		ProposerAddress:            blockQuery.Header.ProposerAddress,
-	})
-
-	// Decode transactions if they exist
-	for _, tx := range blockQuery.Data.Txs {
-		txData, ok := tx.(string)
-		if !ok {
-			log.Error().Msg("Transaction data is not a string")
-			continue
+		log.Info().Msgf("Processing heights from %d to %d", lastProcessedHeight, chainLatestHeight)
+		// Emit heights to process into channel
+		for w := lastProcessedHeight; w <= chainLatestHeight; w++ {
+			select {
+			case <-signalChan:
+				log.Info().Msg("Shutdown signal received, exiting...")
+				// cancel()
+				return
+			default:
+				heightsChan <- w
+			}
 		}
-
-		// Decode the transaction
-		processTx(config, txData)
-	}
-
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to insert block info")
-	}
-
-}
-
-func processBlock(config ClientConfig, blockInfo types.BlockInfo) {
-	// Process the block information (e.g., insert into database)
-	// Assuming `insertBlockInfo` is defined elsewhere
-	height, err := strconv.ParseInt(blockInfo.Block.Header.Height, 10, 64)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to parse block height")
-		return
-	}
-
-	err = insertBlockInfo(DBBlockInfo{
-		BlockHash:                  blockInfo.Block.Header.LastBlockID.Hash,
-		BlockTime:                  blockInfo.Block.Header.Time,
-		BlockTotalParts:            blockInfo.BlockID.PartSetHeader.Total,
-		BlockPartSetHeaderHash:     blockInfo.BlockID.PartSetHeader.Hash,
-		BlockVersion:               blockInfo.Block.Header.Version.Block,
-		ChainID:                    blockInfo.Block.Header.ChainID,
-		Height:                     height,
-		LastBlockHash:              blockInfo.Block.Header.LastBlockID.Hash,
-		LastBlockTotalParts:        blockInfo.Block.Header.LastBlockID.PartSetHeader.Total,
-		LastBlockPartSetHeaderHash: blockInfo.Block.Header.LastBlockID.PartSetHeader.Hash,
-		LastCommitHash:             blockInfo.Block.Header.LastCommitHash,
-		DataHash:                   blockInfo.Block.Header.DataHash,
-		ValidatorsHash:             blockInfo.Block.Header.ValidatorsHash,
-		NextValidatorsHash:         blockInfo.Block.Header.NextValidatorsHash,
-		ConsensusHash:              blockInfo.Block.Header.ConsensusHash,
-		AppHash:                    blockInfo.Block.Header.AppHash,
-		LastResultsHash:            blockInfo.Block.Header.LastResultsHash,
-		EvidenceHash:               blockInfo.Block.Header.EvidenceHash,
-		ProposerAddress:            blockInfo.Block.Header.ProposerAddress,
-	})
-
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to insert block info")
-	}
-}
-
-func decodeTx(config ClientConfig, txData string) (string, error) {
-	// Replace placeholder in the command with the actual transaction data
-	cmd := config.Commands["decodeTx"]
-	for i, part := range cmd.Parts {
-		if part == "{txData}" {
-			cmd.Parts[i] = txData
-			break
+		log.Info().Msg("All blocks processed...")
+		if exitWhenCaughtUp {
+			return
 		}
+		time.Sleep(5 * time.Second)
 	}
+	close(heightsChan)
+	wgBlocks.Wait() // Wait for all workers to finish
+	log.Info().Msg("All workers finished")
 
-	// Execute the decode command
-	output, err := ExecuteCommand(config.CliApp, config.Node, cmd.Parts)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to decode transaction")
-		return "", err
-	}
-
-	log.Debug().Str("output", string(output)).Msg("Decoded transaction")
-
-	// Process the decoded transaction output
-	return string(output), nil
 }
 
-func processTx(config ClientConfig, txData string) {
-	// Decode the transaction using the decodeTx function
-	decodedTxData, err := decodeTx(config, txData)
+func worker(wgBlocks *sync.WaitGroup, heightsChan <-chan uint64){
+	defer wgBlocks.Done()
+	for height := range heightsChan {
+		log.Info().Msgf("Processing height: %d", height)
+		block, err := fetchBlock(config, height)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to fetchBlock block height")
+			return
+		}
+		log.Info().Msgf("fetchBlock height: %d, len(TXs): %d", height, len(block.Data.Txs))
+		err = writeBlock(config, block)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to writeBlock block height")
+			return
+		}
+		log.Info().Msgf("Write height: %d", height)
 
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to process transaction")
-	}
-
-	// Check if the decoded transaction contains specific messages and process them
-	// Assuming decodedTxData is a JSON string, unmarshal it into a suitable Go struct
-	var txMessage types.Transaction
-	err = json.Unmarshal([]byte(decodedTxData), &txMessage)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to unmarshal decoded transaction data")
-		return
-	}
-
-	// Process the decoded transaction message
-	for _, msg := range txMessage.Body.Messages {
-		switch msg.Type {
-		case "/emissions.state.v1.MsgProcessInferences":
-			// Process MsgProcessInferences
-			log.Info().Msg("Processing MsgProcessInferences...")
-			// Add your processing logic here
-		default:
-			log.Info().Str("type", msg.Type).Msg("Unknown message type")
+		if len(block.Data.Txs) > 0 {
+			log.Info().Msgf("Processing txs at height: %d", height)
+			wgTxs := sync.WaitGroup{}
+			for _, encTx := range block.Data.Txs {
+				wgTxs.Add(1)
+				log.Info().Msgf("Processing height: %d, encTx: %s", height, encTx)
+				go processTx(&wgTxs, height, encTx)
+			}
+			wgTxs.Wait()
 		}
 	}
 }

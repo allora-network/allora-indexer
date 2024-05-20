@@ -1,16 +1,10 @@
 package types
 
+
+
 type Tx struct {
 	Body struct {
-		Messages []struct {
-			Type             string `json:"@type,omitempty"`
-			DelegatorAddress string `json:"delegator_address,omitempty"`
-			ValidatorAddress string `json:"validator_address,omitempty"`
-			Amount           struct {
-				Denom  string `json:"denom,omitempty"`
-				Amount string `json:"amount,omitempty"`
-			} `json:"amount,omitempty"`
-		} `json:"messages,omitempty"`
+		Messages                    []Message `json:"messages,omitempty"`
 		Memo                        string `json:"memo,omitempty"`
 		TimeoutHeight               string `json:"timeout_height,omitempty"`
 		ExtensionOptions            []any  `json:"extension_options,omitempty"`
@@ -41,4 +35,33 @@ type Tx struct {
 		Tip any `json:"tip,omitempty"`
 	} `json:"auth_info,omitempty"`
 	Signatures []string `json:"signatures,omitempty"`
+}
+
+type Message map[string]interface{}
+
+type MsgSend struct {
+	Type string `json:"@type,omitempty"`
+	FromAddress string `json:"from_address,omitempty"`
+	ToAddress string `json:"to_address,omitempty"`
+	Amount []struct {
+		Denom  string `json:"denom,omitempty"`
+		Amount string `json:"amount,omitempty"`
+	} `json:"amount,omitempty"`
+}
+type MsgFundTopic struct {
+	Type string `json:"@type,omitempty"`
+	Sender string `json:"sender,omitempty"`
+	TopicID string `json:"topic_id,omitempty"`
+	Amount string `json:"amount,omitempty"`
+}
+
+
+type MsgRegister struct {
+	Type string `json:"@type,omitempty"`
+	Sender string `json:"sender,omitempty"`
+	TopicID string `json:"topic_id,omitempty"`
+	Owner string `json:"owner,omitempty"`
+	LibP2pKey string `json:"lib_p2p_key,omitempty"`
+	MultiAddress string `json:"multi_address,omitempty"`
+	IsReputer bool `json:"is_reputer,omitempty"`
 }

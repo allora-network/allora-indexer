@@ -131,7 +131,7 @@ type BlockQuery struct {
 		ProposerAddress    string `json:"proposer_address"`
 	} `json:"header"`
 	Data struct {
-		Txs []any `json:"txs"`
+		Txs []string `json:"txs"`
 	} `json:"data"`
 	Evidence struct {
 		Evidence []any `json:"evidence"`
