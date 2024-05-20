@@ -33,14 +33,6 @@ RUN apt update && \
     rm -rf /var/cache/apt/*
 
 WORKDIR /
-<<<<<<< Updated upstream
-COPY --from=gobuilder allora-cosmos-pump allora-cosmos-pump
-COPY --from=gobuilder /usr/local/bin/allorad /usr/local/bin/allorad
-RUN chmod +x /usr/local/bin/allorad
-
-EXPOSE 8080
-ENTRYPOINT ["./allora-cosmos-pump"]
-=======
 # Detect the architecture and download the appropriate binary
 # RUN curl -L https://github.com/allora-network/allora-chain/releases/download/untagged-897b45d53401bc762977/allorad_linux_amd64 -o /usr/local/bin/allorad; \
 #     chmod a+x /usr/local/bin/allorad
@@ -49,4 +41,3 @@ COPY --from=gobuilder allora-cosmos-pump /usr/local/bin/allora-cosmos-pump
 COPY allorad /usr/local/bin/allorad
 # EXPOSE 8080
 ENTRYPOINT ["allora-cosmos-pump"]
->>>>>>> Stashed changes
