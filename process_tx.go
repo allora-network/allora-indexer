@@ -82,7 +82,7 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 		case "/emissions.v1.MsgInsertBulkWorkerPayload":
 			// Process MsgProcessInferences
 			log.Info().Msg("Processing MsgInsertBulkWorkerPayload...")
-			var workerPayload types.InsertBulkWorkerPayload
+			var workerPayload types.MsgInsertBulkWorkerPayload
 			json.Unmarshal(mjson, &workerPayload)
 			insertInferenceForcasts(height, messageId, workerPayload)
 			if err != nil {
@@ -222,7 +222,7 @@ func insertMsgSend(height uint64, messageId uint64, msg types.MsgSend) error {
 }
 
 
-func insertInferenceForcasts(blockHeight uint64, messageId uint64, inf types.InsertBulkWorkerPayload) error {
+func insertInferenceForcasts(blockHeight uint64, messageId uint64, inf types.MsgInsertBulkWorkerPayload) error {
 
 	for _, bundle := range inf.WorkerDataBundles {
 

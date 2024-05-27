@@ -1,6 +1,6 @@
 package types
 
-type InsertBulkWorkerPayload struct {
+type MsgInsertBulkWorkerPayload struct {
 	Type                  string `json:"@type"`
 	Nonce                 struct {
 		BlockHeight string `json:"block_height"`
@@ -34,7 +34,7 @@ type InsertBulkWorkerPayload struct {
 	} `json:"worker_data_bundles"`
 }
 
-type InsertBulkReputerPayload struct {
+type MsgInsertBulkReputerPayload struct {
 	Type                  string `json:"@type"`
 	Sender                string `json:"sender"`
 	TopicID               string `json:"topic_id"`
@@ -85,4 +85,30 @@ type InsertBulkReputerPayload struct {
 			} `json:"one_out_forecaster_values"`
 		} `json:"value_bundle"`
 	} `json:"reputer_value_bundles"`
+}
+
+type MsgSend struct {
+	Type string `json:"@type,omitempty"`
+	FromAddress string `json:"from_address,omitempty"`
+	ToAddress string `json:"to_address,omitempty"`
+	Amount []struct {
+		Denom  string `json:"denom,omitempty"`
+		Amount string `json:"amount,omitempty"`
+	} `json:"amount,omitempty"`
+}
+type MsgFundTopic struct {
+	Type string `json:"@type,omitempty"`
+	Sender string `json:"sender,omitempty"`
+	TopicID string `json:"topic_id,omitempty"`
+	Amount string `json:"amount,omitempty"`
+}
+
+type MsgRegister struct {
+	Type string `json:"@type,omitempty"`
+	Sender string `json:"sender,omitempty"`
+	TopicID string `json:"topic_id,omitempty"`
+	Owner string `json:"owner,omitempty"`
+	LibP2pKey string `json:"lib_p2p_key,omitempty"`
+	MultiAddress string `json:"multi_address,omitempty"`
+	IsReputer bool `json:"is_reputer,omitempty"`
 }
