@@ -110,7 +110,7 @@ func getLatestBlockHeightFromDB() (uint64, error) {
 	// Check if maxHeight is valid (not NULL)
 	if !maxHeight.Valid {
 		// No valid maxHeight found, probably because there are no entries in the table
-		return 0, nil // Returning 0 is safe if you treat it as "start from the beginning"
+		return 1, nil // Returning 1 is safe if you treat it as "start from the beginning"
 	}
 
 	return uint64(maxHeight.Int64), nil

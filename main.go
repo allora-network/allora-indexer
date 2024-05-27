@@ -162,13 +162,11 @@ func main() {
 	for{
 		lastProcessedHeight, err := getLatestBlockHeightFromDB()
 		if err != nil {
-			log.Error().Err(err).Msg("Failed to getLatestBlockHeightFromDB")
-			return
+			log.Fatal().Err(err).Msg("Failed to getLatestBlockHeightFromDB")
 		}
 		chainLatestHeight, err := getLatestHeight()
 		if err != nil {
-			log.Error().Err(err).Msg("Failed to getLatestHeight")
-			return
+			log.Fatal().Err(err).Msg("Failed to getLatestHeight")
 		}
 		log.Info().Msgf("Processing heights from %d to %d", lastProcessedHeight, chainLatestHeight)
 		// Emit heights to process into channel
@@ -200,15 +198,14 @@ func worker(wgBlocks *sync.WaitGroup, heightsChan <-chan uint64){
 		log.Info().Msgf("Processing height: %d", height)
 		block, err := fetchBlock(config, height)
 		if err != nil {
-			log.Error().Err(err).Msg("Failed to fetchBlock block height")
-			return
+			log.Fatal().Err(err).Msg("Failed to fetchBlock block height")
 		}
 		log.Info().Msgf("fetchBlock height: %d, len(TXs): %d", height, len(block.Data.Txs))
 		err = writeBlock(config, block)
 		if err != nil {
-			log.Error().Err(err).Msg("Failed to writeBlock block height")
-			return
+			log.Fatal().Err(err).Msgf("Failed to writeBlock, height: %d", height)
 		}
+
 		log.Info().Msgf("Write height: %d", height)
 
 		if len(block.Data.Txs) > 0 {

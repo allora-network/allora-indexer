@@ -17,7 +17,7 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 	// Decode the transaction using the decodeTx function
 	txMessage, err := ExecuteCommandByKey[types.Tx](config, "decodeTx", txData)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to execute command")
+		log.Fatal().Err(err).Msg("Failed to execute command")
 	}
 
 	// Process the decoded transaction message
@@ -25,7 +25,7 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 		mtype := msg["@type"].(string) //fmt.Sprint(msg["@type"])
 		mjson, err := json.Marshal(msg)
 		if err != nil {
-			log.Error().Err(err).Msg("Failed to unmarshal msg")
+			log.Fatal().Err(err).Msg("Failed to unmarshal msg")
 		}
 		var creator string
 		if msg["creator"] != nil {
@@ -35,15 +35,14 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 		} else if msg["from_address"] != nil {
 			creator = msg["from_address"].(string)
 		} else {
-			log.Error().Msg("Cannot define creator!!!")
-			return
+			log.Fatal().Msg("Cannot define creator!!!")
 		}
 
 		var messageId uint64
 		log.Info().Msgf("Inserting message, height: %d", height)
 		messageId, err = insertMessage(height, mtype, creator, string(mjson))
 		if err != nil {
-			log.Error().Err(err).Msgf("Failed to insertMessage, height: %d", height)
+			log.Fatal().Err(err).Msgf("Failed to insertMessage, height: %d", height)
 		}
 
 		switch mtype {
@@ -54,6 +53,9 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 			var topicPayload types.Topic
 			json.Unmarshal(mjson, &topicPayload)
 			insertTopic(height, messageId, topicPayload)
+			if err != nil {
+				log.Fatal().Err(err).Msgf("Failed to insertTopic, height: %d", height)
+			}
 
 		case "/emissions.v1.MsgFundTopic", "/emissions.v1.MsgAddStake":
 			// Process MsgProcessInferences
@@ -62,6 +64,9 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 			var msgFundTopic types.MsgFundTopic
 			json.Unmarshal(mjson, &msgFundTopic)
 			insertMsgFundTopic(height, messageId, msgFundTopic)
+			if err != nil {
+				log.Fatal().Err(err).Msgf("Failed to insertMsgFundTopic, height: %d", height)
+			}
 
 		case "/cosmos.bank.v1beta1.MsgSend":
 			// Process MsgProcessInferences
@@ -70,6 +75,9 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 			var msgSend types.MsgSend
 			json.Unmarshal(mjson, &msgSend)
 			insertMsgSend(height, messageId, msgSend)
+			if err != nil {
+				log.Fatal().Err(err).Msgf("Failed to insertMsgSend, height: %d", height)
+			}
 
 		case "/emissions.v1.MsgInsertBulkWorkerPayload":
 			// Process MsgProcessInferences
@@ -77,6 +85,9 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 			var workerPayload types.InsertBulkWorkerPayload
 			json.Unmarshal(mjson, &workerPayload)
 			insertInferenceForcasts(height, messageId, workerPayload)
+			if err != nil {
+				log.Fatal().Err(err).Msgf("Failed to insertInferenceForcasts, height: %d", height)
+			}
 
 		case "/emissions.v1.MsgRegister":
 			// Process MsgProcessInferences
@@ -84,6 +95,9 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 			var msgRegister types.MsgRegister
 			json.Unmarshal(mjson, &msgRegister)
 			insertMsgRegister(height, messageId, msgRegister)
+			if err != nil {
+				log.Fatal().Err(err).Msgf("Failed to insertMsgRegister, height: %d", height)
+			}
 
 		default:
 			log.Info().Str("type", mtype).Msg("Unknown message type")
@@ -108,6 +122,11 @@ func insertMsgRegister(height uint64, messageId uint64, msg types.MsgRegister) e
 		return err
 	}
 
+	topId, err := strconv.Atoi(msg.TopicID)
+    if err != nil {
+		log.Error().Err(err).Msg("Failed to convert msg.TopicID to int")
+		return err
+    }
 	_, err = dbPool.Exec(context.Background(), `
 		INSERT INTO worker_registrations (
 			message_height,
@@ -118,7 +137,7 @@ func insertMsgRegister(height uint64, messageId uint64, msg types.MsgRegister) e
 			worker_libp2pkey,
 			is_reputer
 		) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		height, messageId, msg.Sender, msg.TopicID, msg.Owner, msg.LibP2pKey, msg.IsReputer,
+		height, messageId, msg.Sender, topId, msg.Owner, msg.LibP2pKey, msg.IsReputer,
 	)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to insert insertMsgRegister")
@@ -149,7 +168,13 @@ func insertAddress(t string, address sql.NullString, pub_key sql.NullString, mem
 }
 
 func insertMsgFundTopic(height uint64, messageId uint64, msg types.MsgFundTopic) error {
-	_, err := dbPool.Exec(context.Background(), `
+	topId, err := strconv.Atoi(msg.TopicID)
+    if err != nil {
+		log.Error().Err(err).Msg("Failed to convert msg.TopicID to int in insertMsgFundTopic")
+		return err
+    }
+
+	_, err = dbPool.Exec(context.Background(), `
 		INSERT INTO transfers (
 			message_height,
 			message_id,
@@ -158,7 +183,7 @@ func insertMsgFundTopic(height uint64, messageId uint64, msg types.MsgFundTopic)
 			amount,
 			denom
 		) VALUES ($1, $2, $3, $4, $5, $6)`,
-		height, messageId, msg.Sender, msg.TopicID, msg.Amount, "uallo",
+		height, messageId, msg.Sender, topId, msg.Amount, "uallo",
 	)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to insert insertMsgFundTopic")
@@ -200,22 +225,39 @@ func insertMsgSend(height uint64, messageId uint64, msg types.MsgSend) error {
 func insertInferenceForcasts(blockHeight uint64, messageId uint64, inf types.InsertBulkWorkerPayload) error {
 
 	for _, bundle := range inf.WorkerDataBundles {
-		// Insert Forcasts
+
+		nonce_block_height, err := strconv.Atoi(inf.Nonce.BlockHeight)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to convert inf.Nonce.BlockHeight to int in insertInferenceForcasts")
+			return err
+		}
+		topic_id, err := strconv.Atoi(inf.TopicID)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to convert inf.TopicID to int in insertInferenceForcasts")
+			return err
+		}
+		block_height, err := strconv.Atoi(bundle.InferenceForecastsBundle.Inference.BlockHeight)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to convert bundle.InferenceForecastsBundle.Inference.BlockHeight to int in insertInferenceForcasts")
+			return err
+		}
+		// Insert inference
+		log.Info().Msgf("Inserting inference, value: %s", bundle.InferenceForecastsBundle.Inference.Value)
 		if _, err := strconv.ParseFloat(bundle.InferenceForecastsBundle.Inference.Value, 64); err == nil {
 			_, err := dbPool.Exec(context.Background(), `
 				INSERT INTO inferences (
 					message_height,
 					message_id,
-					nonce_block_height, 
-					topic_id, 
+					nonce_block_height,
+					topic_id,
 					block_height,
-					inferer, 
+					inferer,
 					value,
 					extra_data,
 					proof
-				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-				blockHeight, messageId, inf.Nonce.BlockHeight, inf.TopicID,
-				bundle.InferenceForecastsBundle.Inference.BlockHeight, bundle.InferenceForecastsBundle.Inference.Inferer,
+				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+				blockHeight, messageId, nonce_block_height, topic_id,
+				block_height, bundle.InferenceForecastsBundle.Inference.Inferer,
 				bundle.InferenceForecastsBundle.Inference.Value, bundle.InferenceForecastsBundle.Inference.ExtraData,
 				bundle.InferenceForecastsBundle.Inference.Proof,
 			)
@@ -223,7 +265,10 @@ func insertInferenceForcasts(blockHeight uint64, messageId uint64, inf types.Ins
 				log.Error().Err(err).Msg("Failed to insert inferences")
 				return err
 			}
-		}	
+		} else {
+			log.Error().Err(err).Msg("Failed to convert inference value")
+			return err
+		}
 		// Insert Forcasts
 		if len(bundle.InferenceForecastsBundle.Forecast.ForecastElements) > 0 {
 			var forcastId uint64

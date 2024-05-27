@@ -29,13 +29,13 @@ func insertTopic(height uint64, messageId uint64, topic types.Topic) error {
 	}
 	topId1Back, err := strconv.Atoi(lastTopicIdStr1Back.NextTopicID)
     if err != nil {
-        // ... handle error
-        panic(err)
+		log.Error().Err(err).Msg("Failed to convert lastTopicIdStr1Back.NextTopicID to int")
+		return err
     }
 	topId, err := strconv.Atoi(lastTopicIdStr.NextTopicID)
     if err != nil {
-        // ... handle error
-        panic(err)
+		log.Error().Err(err).Msg("Failed to convert lastTopicIdStr.NextTopicID to int")
+		return err
     }
 
 	for i := topId1Back; i < topId; i++ {
