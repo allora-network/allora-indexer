@@ -1,17 +1,5 @@
 package types
 
-type GenericMessage struct {
-	Type string `json:"@type"`
-}
-
-type MessageBody struct {
-	Messages []GenericMessage `json:"messages"`
-}
-
-type Transaction struct {
-	Body MessageBody `json:"body"`
-}
-
 type InsertBulkWorkerPayload struct {
 	Type                  string `json:"@type"`
 	Nonce                 struct {
