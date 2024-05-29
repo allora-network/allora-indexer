@@ -1,5 +1,27 @@
 package types
 
+
+type MsgCreateNewTopic struct {
+	Type              string `json:"@type,omitempty"` // Optional to be able to use to unmarshal topic by id
+	TopicID           string `json:"id,omitempty"`    // Optional to be able to use to unmarshal topic by id
+	Creator           string `json:"creator"`
+	Metadata          string `json:"metadata"`
+	LossLogic         string `json:"loss_logic"`
+	LossMethod        string `json:"loss_method"`
+	InferenceLogic    string `json:"inference_logic"`
+	InferenceMethod   string `json:"inference_method"`
+	EpochLength       string `json:"epoch_length"`
+	GroundTruthLag    string `json:"ground_truth_lag"`
+	DefaultArg        string `json:"default_arg"`
+	Pnorm             string `json:"pnorm"`
+	AlphaRegret       string `json:"alpha_regret"`
+	PrewardReputer    string `json:"preward_reputer"`
+	PrewardInference  string `json:"preward_inference"`
+	PrewardForecast   string `json:"preward_forecast"`
+	FTolerance        string `json:"f_tolerance"`
+	AllowNegative     bool   `json:"allow_negative"`
+}
+
 type MsgInsertBulkWorkerPayload struct {
 	Type                  string `json:"@type"`
 	Nonce                 struct {

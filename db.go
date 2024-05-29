@@ -139,7 +139,6 @@ func createMessagesTablesSQL() string {
 		loss_method VARCHAR(255),
 		inference_logic VARCHAR(255),
 		inference_method VARCHAR(255),
-		epoch_last_ended VARCHAR(255),
 		epoch_length VARCHAR(255),
 		ground_truth_lag VARCHAR(255),
 		default_arg VARCHAR(255),
@@ -149,6 +148,7 @@ func createMessagesTablesSQL() string {
 		preward_inference VARCHAR(255),
 		preward_forecast VARCHAR(255),
 		f_tolerance VARCHAR(255),
+		allow_negative BOOLEAN,
 		message_height INT,
 		message_id INT,
 		FOREIGN KEY (message_height) REFERENCES block_info(height),
@@ -209,7 +209,6 @@ func createMessagesTablesSQL() string {
 		extra_data TEXT,
 		proof TEXT,
 		FOREIGN KEY (message_height) REFERENCES block_info(height),
-		FOREIGN KEY (nonce_block_height) REFERENCES block_info(height),
 		FOREIGN KEY (block_height) REFERENCES block_info(height),
 		FOREIGN KEY (message_id) REFERENCES messages(id),
 		FOREIGN KEY (topic_id) REFERENCES topics(id),
@@ -224,8 +223,8 @@ func createMessagesTablesSQL() string {
 		topic_id INT,
 		block_height INT,
 		forcaster VARCHAR(255),
+		extra_data VARCHAR(255),
 		FOREIGN KEY (message_height) REFERENCES block_info(height),
-		FOREIGN KEY (nonce_block_height) REFERENCES block_info(height),
 		FOREIGN KEY (block_height) REFERENCES block_info(height),
 		FOREIGN KEY (message_id) REFERENCES messages(id),
 		FOREIGN KEY (topic_id) REFERENCES topics(id),
@@ -233,14 +232,66 @@ func createMessagesTablesSQL() string {
 	);
 
 	CREATE TABLE IF NOT EXISTS forcast_values (
-		id BIGINT PRIMARY KEY,
 		forcast_id INT,
 		value VARCHAR(255),
 		inferer VARCHAR(255),
 		FOREIGN KEY (inferer) REFERENCES addresses(address),
 		FOREIGN KEY (forcast_id) REFERENCES forcasts(id)
 	);
-	`
+
+	CREATE TABLE IF NOT EXISTS reputer_payload (
+		id SERIAL PRIMARY KEY,
+		message_height INT,
+		message_id INT,
+		sender VARCHAR(255),
+		worker_nonce_block_height INT,
+		reputer_nonce_block_height INT,
+		topic_id INT,
+		FOREIGN KEY (message_id) REFERENCES messages(id),
+		FOREIGN KEY (message_height) REFERENCES block_info(height),
+		FOREIGN KEY (sender) REFERENCES addresses(address),
+		FOREIGN KEY (topic_id) REFERENCES topics(id)
+	);
+
+	CREATE TABLE IF NOT EXISTS reputer_bundles (
+		id SERIAL PRIMARY KEY,
+		reputer_payload_id INT,
+		pubkey VARCHAR(255),
+		signature VARCHAR(255),
+		reputer  VARCHAR(255),
+		topic_id    INT,
+		extra_data  VARCHAR(255),
+		naive_value  VARCHAR(255),
+		combined_value    VARCHAR(255),
+		reputer_request_worker_nonce  INT,
+		reputer_request_reputer_nonce  INT,
+		FOREIGN KEY (reputer_payload_id) REFERENCES reputer_payload(id),
+		FOREIGN KEY (pubkey) REFERENCES addresses(pub_key),
+		FOREIGN KEY (reputer) REFERENCES addresses(address),
+		FOREIGN KEY (topic_id) REFERENCES topics(id)
+	);
+
+	DO $$ BEGIN
+		CREATE TYPE reputerValueType AS ENUM(
+			'InfererValues',
+			'ForecasterValues',
+			'OneOutInfererValues',
+			'OneInForecasterValues',
+			'OneOutForecasterValues'
+		);
+	EXCEPTION
+		WHEN duplicate_object THEN null;
+	END $$;
+
+	CREATE TABLE IF NOT EXISTS bundle_values (
+		bundle_id INT,
+		reputer_value_type reputerValueType,
+		value VARCHAR(255),
+		worker VARCHAR(255),
+		FOREIGN KEY (bundle_id) REFERENCES reputer_bundles(id),
+		FOREIGN KEY (worker) REFERENCES addresses(address)
+	);`
+
 
 
 	// CREATE TABLE IF NOT EXISTS signer_infos (

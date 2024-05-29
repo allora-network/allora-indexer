@@ -11,11 +11,10 @@ import (
 
 //* Process topics
 type TopicOutput struct {
-	Topic types.Topic `json:"topic"`
+	Topic types.MsgCreateNewTopic `json:"topic"`
 }
 
-
-func insertTopic(height uint64, messageId uint64, topic types.Topic) error {
+func insertMsgCreateNewTopic(height uint64, messageId uint64, topic types.MsgCreateNewTopic) error {
 
 	lastTopicIdStr, err := ExecuteCommandByKey[struct {NextTopicID string `json:"next_topic_id"`}](config, "nextTopicId", "--height", strconv.FormatUint(height, 10))
 	if err != nil {
@@ -39,11 +38,14 @@ func insertTopic(height uint64, messageId uint64, topic types.Topic) error {
     }
 
 	for i := topId1Back; i < topId; i++ {
+		log.Info().Msgf("%d: (%d) == (%d)", i, topId, topId1Back)
+
 		t, err := ExecuteCommandByKey[TopicOutput](config, "topicById", strconv.Itoa(i), "--height", strconv.FormatUint(height, 10))
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to execute command topicById in insertTopics")
 			return err
 		}
+
 		if topic.Metadata == t.Topic.Metadata {
 			err :=insertAddress("allora", sql.NullString{topic.Creator, true}, sql.NullString{"", false}, "")
 			if err != nil {
@@ -60,7 +62,6 @@ func insertTopic(height uint64, messageId uint64, topic types.Topic) error {
 					loss_method,
 					inference_logic,
 					inference_method,
-					epoch_last_ended,
 					epoch_length,
 					ground_truth_lag,
 					default_arg,
@@ -70,6 +71,7 @@ func insertTopic(height uint64, messageId uint64, topic types.Topic) error {
 					preward_inference,
 					preward_forecast,
 					f_tolerance,
+					allow_negative,
 					message_height,
 					message_id
 				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
@@ -80,7 +82,6 @@ func insertTopic(height uint64, messageId uint64, topic types.Topic) error {
 				t.Topic.LossMethod,
 				t.Topic.InferenceLogic,
 				t.Topic.InferenceMethod,
-				t.Topic.EpochLastEnded,
 				t.Topic.EpochLength,
 				t.Topic.GroundTruthLag,
 				t.Topic.DefaultArg,
@@ -90,6 +91,7 @@ func insertTopic(height uint64, messageId uint64, topic types.Topic) error {
 				t.Topic.PrewardInference,
 				t.Topic.PrewardForecast,
 				t.Topic.FTolerance,
+				t.Topic.AllowNegative,
 				height,
 				messageId,
 			)
