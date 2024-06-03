@@ -209,7 +209,6 @@ func createMessagesTablesSQL() string {
 		extra_data TEXT,
 		proof TEXT,
 		FOREIGN KEY (message_height) REFERENCES block_info(height),
-		FOREIGN KEY (block_height) REFERENCES block_info(height),
 		FOREIGN KEY (message_id) REFERENCES messages(id),
 		FOREIGN KEY (topic_id) REFERENCES topics(id),
 		FOREIGN KEY (inferer) REFERENCES addresses(address)
@@ -225,7 +224,6 @@ func createMessagesTablesSQL() string {
 		forcaster VARCHAR(255),
 		extra_data VARCHAR(255),
 		FOREIGN KEY (message_height) REFERENCES block_info(height),
-		FOREIGN KEY (block_height) REFERENCES block_info(height),
 		FOREIGN KEY (message_id) REFERENCES messages(id),
 		FOREIGN KEY (topic_id) REFERENCES topics(id),
 		FOREIGN KEY (forcaster) REFERENCES addresses(address)
@@ -292,6 +290,8 @@ func createMessagesTablesSQL() string {
 		FOREIGN KEY (worker) REFERENCES addresses(address)
 	);`
 
+	// FOREIGN KEY (block_height) REFERENCES block_info(height),
+	// FOREIGN KEY (block_height) REFERENCES block_info(height),
 
 
 	// CREATE TABLE IF NOT EXISTS signer_infos (

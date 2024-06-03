@@ -258,7 +258,6 @@ func insertBulkReputerPayload(blockHeight uint64, messageId uint64, msg types.Ms
 	return nil
 }
 
-
 func insertBulkWorkerPayload(blockHeight uint64, messageId uint64, inf types.MsgInsertBulkWorkerPayload) error {
 
 	for _, bundle := range inf.WorkerDataBundles {
@@ -278,10 +277,9 @@ func insertBulkWorkerPayload(blockHeight uint64, messageId uint64, inf types.Msg
 			log.Error().Err(err).Msg("Failed to convert bundle.InferenceForecastsBundle.Inference.BlockHeight to int in insertInferenceForcasts")
 			return err
 		}
-		// waitCreation("block_info", "height", strconv.FormatUint(blockHeight, 10))
-		waitCreation("block_info", "height", strconv.Itoa(block_height))
+		waitCreation("block_info", "height", strconv.FormatUint(blockHeight, 10))
 		if err != nil {
-			log.Error().Err(err).Msg("height is still not exist in block_info. Exiting...")
+			log.Error().Err(err).Msg("height is still not exist in block_info blockHeight. Exiting...")
 			return err
 		}
 		// Insert inference
