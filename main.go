@@ -154,8 +154,6 @@ func main() {
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
-	wgBlocks := sync.WaitGroup{}
-
 	// Set a cancel context to stop the workers
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -164,6 +162,7 @@ func main() {
 	heightsChan := make(chan uint64, workersNum)
 	defer close(heightsChan)
 
+	wgBlocks := sync.WaitGroup{}
 	for j := uint(1); j <= workersNum; j++ {
 		wgBlocks.Add(1)
 		go worker(ctx, &wgBlocks, heightsChan)
