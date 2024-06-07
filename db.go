@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -210,7 +212,6 @@ func createMessagesTablesSQL() string {
 		value VARCHAR(255),
 		extra_data TEXT,
 		proof TEXT,
-		FOREIGN KEY (message_height) REFERENCES block_info(height),
 		FOREIGN KEY (message_id) REFERENCES messages(id),
 		FOREIGN KEY (topic_id) REFERENCES topics(id),
 		FOREIGN KEY (inferer) REFERENCES addresses(address)
@@ -225,7 +226,6 @@ func createMessagesTablesSQL() string {
 		block_height INT,
 		forcaster VARCHAR(255),
 		extra_data VARCHAR(255),
-		FOREIGN KEY (message_height) REFERENCES block_info(height),
 		FOREIGN KEY (message_id) REFERENCES messages(id),
 		FOREIGN KEY (topic_id) REFERENCES topics(id),
 		FOREIGN KEY (forcaster) REFERENCES addresses(address)
@@ -248,7 +248,6 @@ func createMessagesTablesSQL() string {
 		reputer_nonce_block_height INT,
 		topic_id INT,
 		FOREIGN KEY (message_id) REFERENCES messages(id),
-		FOREIGN KEY (message_height) REFERENCES block_info(height),
 		FOREIGN KEY (sender) REFERENCES addresses(address),
 		FOREIGN KEY (topic_id) REFERENCES topics(id)
 	);
@@ -346,8 +345,9 @@ func createEventsTablesSQL() string {
 		topic_id INT,
 		type VARCHAR(255),
 		address VARCHAR(255),
-		value NUMERIC,
-		FOREIGN KEY (height) REFERENCES block_info(height)
+		value NUMERIC(72,18),
+		FOREIGN KEY (height) REFERENCES block_info(height),
+		CONSTRAINT unique_score_entry UNIQUE (height, topic_id, type, address)
 	);
 
 	CREATE TABLE IF NOT EXISTS rewards (
@@ -356,8 +356,9 @@ func createEventsTablesSQL() string {
 		topic_id INT,
 		type VARCHAR(255),
 		address VARCHAR(255),
-		value NUMERIC,
-		FOREIGN KEY (height) REFERENCES block_info(height)
+		value NUMERIC(72,18),
+		FOREIGN KEY (height) REFERENCES block_info(height),
+		CONSTRAINT unique_reward_entry UNIQUE (height, topic_id, type, address)
 	);
 	`
 }
@@ -481,6 +482,123 @@ func insertEvents(events []EventRecord) error {
 			event.Height, event.Type, event.Sender, data)
 		if err != nil {
 			return fmt.Errorf("event insert failed: %v", err)
+		}
+
+		// Additional handling for scores and rewards
+		switch event.Type {
+		case "inferer_scores_set", "reputer_scores_set", "forecaster_scores_set":
+			err = insertScore(event)
+		case "inferer_rewards_settled", "forecaster_rewards_settled", "reputer_and_delegator_rewards_settled":
+			err = insertReward(event)
+		default:
+			log.Info().Str("Event type", event.Type).Msg("skipping event type ")
+			continue
+		}
+
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func insertScore(event EventRecord) error {
+	log.Info().Interface("Event score", event).Msg("inserting event score ")
+	var attributes []Attribute
+	err := json.Unmarshal(event.Data, &attributes)
+	if err != nil {
+		return err
+	}
+
+	var topicID int
+	var scoreType string
+	var addresses []string
+	var scores []big.Float
+
+	for _, attr := range attributes {
+		switch attr.Key {
+		case "topic_id":
+			topicID, err = strconv.Atoi(attr.Value)
+			if err != nil {
+				return err
+			}
+		case "score_type":
+			scoreType = attr.Value
+		case "addresses":
+			err = json.Unmarshal([]byte(attr.Value), &addresses)
+			if err != nil {
+				return err
+			}
+		case "scores":
+			err = json.Unmarshal([]byte(attr.Value), &scores)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	if len(addresses) != len(scores) {
+		return fmt.Errorf("mismatch in length of addresses and scores")
+	}
+
+	for i := range addresses {
+		_, err = dbPool.Exec(context.Background(), `
+			INSERT INTO scores (height, topic_id, type, address, value) VALUES ($1, $2, $3, $4, $5) 
+			ON CONFLICT (height, topic_id, type, address) DO NOTHING`,
+			event.Height, topicID, scoreType, addresses[i], scores[i].Text('f', -1))
+		if err != nil {
+			return fmt.Errorf("score insert failed: %v", err)
+		}
+	}
+	return nil
+}
+
+func insertReward(event EventRecord) error {
+	log.Info().Interface("Event reward", event).Msg("inserting event reward ")
+	var attributes []Attribute
+	err := json.Unmarshal(event.Data, &attributes)
+	if err != nil {
+		return err
+	}
+
+	var topicID int
+	var rewardType string
+	var addresses []string
+	var rewards []big.Float
+
+	for _, attr := range attributes {
+		switch attr.Key {
+		case "topic_id":
+			topicID, err = strconv.Atoi(attr.Value)
+			if err != nil {
+				return err
+			}
+		case "reward_type":
+			rewardType = attr.Value
+		case "addresses":
+			err = json.Unmarshal([]byte(attr.Value), &addresses)
+			if err != nil {
+				return err
+			}
+		case "rewards":
+			err = json.Unmarshal([]byte(attr.Value), &rewards)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	if len(addresses) != len(rewards) {
+		return fmt.Errorf("mismatch in length of addresses and rewards")
+	}
+
+	for i := range addresses {
+		_, err = dbPool.Exec(context.Background(), `
+			INSERT INTO rewards (height, topic_id, type, address, value) VALUES ($1, $2, $3, $4, $5) 
+			ON CONFLICT (height, topic_id, type, address) DO NOTHING`,
+			event.Height, topicID, rewardType, addresses[i], rewards[i].Text('f', -1))
+		if err != nil {
+			return fmt.Errorf("reward insert failed: %v", err)
 		}
 	}
 	return nil

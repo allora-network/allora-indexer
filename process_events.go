@@ -5,19 +5,33 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-
-	"github.com/rs/zerolog/log"
 )
 
-const baseURL = "https://allora-rpc.edgenet.allora.network/block_results?height="
+const eventsRPCQuery = "block_results?height="
 
-var event_whitelist = map[string]bool{
-	"inferer_rewards_settled":               true,
-	"forecaster_rewards_settled":            true,
-	"reputer_and_delegator_rewards_settled": true,
-	"inferer_scores_set":                    true,
-	"reputer_scores_set":                    true,
-	"forecaster_scores_set":                 true,
+type EventType string
+
+const (
+	// RewardEvent represents a reward event
+	RewardEvent EventType = "reward"
+	// ScoreEvent represents a score event
+	ScoreEvent EventType = "score"
+	// NoneEvent represents an event that doesn't need processing
+	NoneEvent EventType = "none"
+)
+
+// EventProcessing defines the type of processing needed for an event
+type EventProcessing struct {
+	Type EventType
+}
+
+var event_whitelist = map[string]EventProcessing{
+	"inferer_rewards_settled":               {Type: RewardEvent},
+	"forecaster_rewards_settled":            {Type: RewardEvent},
+	"reputer_and_delegator_rewards_settled": {Type: RewardEvent},
+	"inferer_scores_set":                    {Type: ScoreEvent},
+	"reputer_scores_set":                    {Type: ScoreEvent},
+	"forecaster_scores_set":                 {Type: ScoreEvent},
 }
 
 type BlockResult struct {
@@ -38,8 +52,8 @@ type Attribute struct {
 }
 
 // FetchEventBlockData fetches block data for a given height
-func FetchEventBlockData(height uint64) (*BlockResult, error) {
-	url := fmt.Sprintf("%s%d", baseURL, height)
+func FetchEventBlockData(config ClientConfig, height uint64) (*BlockResult, error) {
+	url := fmt.Sprintf("%s%s%d", config.Node, eventsRPCQuery, height)
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, err
@@ -64,25 +78,24 @@ func FetchEventBlockData(height uint64) (*BlockResult, error) {
 	return &blockResult, nil
 }
 
-func FilterEvents(events []Event, whitelist map[string]bool) []Event {
+// FilterEvents filters events based on a whitelist on its type
+func FilterEvents(events []Event, whitelist map[string]EventProcessing) []Event {
 	var filteredEvents []Event
 	for _, event := range events {
-		if whitelist[event.Type] {
+		if processing, ok := whitelist[event.Type]; ok && processing.Type != NoneEvent {
 			filteredEvents = append(filteredEvents, event)
 		}
 	}
 	return filteredEvents
 }
 
-func processBlock(height uint64) error {
-	blockData, err := FetchEventBlockData(height)
+// processes the events of a block
+func processBlock(config ClientConfig, height uint64) error {
+	blockData, err := FetchEventBlockData(config, height)
 	if err != nil {
 		return fmt.Errorf("failed to fetch block data: %w", err)
 	}
-	log.Debug().Uint64("height", height).Int("num_events", len(blockData.Result.FinalizeBlockEvents)).Msg("Processing block, events")
-
 	filteredEvents := FilterEvents(blockData.Result.FinalizeBlockEvents, event_whitelist)
-	log.Debug().Uint64("height", height).Int("num_events", len(filteredEvents)).Msg("Processing block")
 
 	var eventRecords []EventRecord
 	for _, event := range filteredEvents {

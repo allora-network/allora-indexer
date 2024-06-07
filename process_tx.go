@@ -122,7 +122,6 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 
 func insertBulkReputerPayload(blockHeight uint64, messageId uint64, msg types.MsgInsertBulkReputerPayload) error {
 
-
 	worker_nonce_block_height, err := strconv.Atoi(msg.ReputerRequestNonce.WorkerNonce.BlockHeight)
 	reputer_nonce_block_height, err := strconv.Atoi(msg.ReputerRequestNonce.ReputerNonce.BlockHeight)
 	var payloadId uint64
@@ -146,7 +145,7 @@ func insertBulkReputerPayload(blockHeight uint64, messageId uint64, msg types.Ms
 	var bundleId uint64
 	for _, bundle := range msg.ReputerValueBundles {
 
-		err :=insertAddress("allora", sql.NullString{"", false}, sql.NullString{bundle.Pubkey, true}, "")
+		err := insertAddress("allora", sql.NullString{"", false}, sql.NullString{bundle.Pubkey, true}, "")
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to insert bundle.Pubkey insertAddress")
 			return err
@@ -352,7 +351,6 @@ func insertBulkWorkerPayload(blockHeight uint64, messageId uint64, inf types.Msg
 			log.Error().Msgf("Message TopicID not equal inference TopicID!!!!")
 		}
 
-
 	}
 
 	return nil
@@ -392,16 +390,16 @@ func insertMsgRegister(height uint64, messageId uint64, msg types.MsgRegister) e
 	}
 
 	topId, err := strconv.Atoi(msg.TopicID)
-    if err != nil {
+	if err != nil {
 		log.Error().Err(err).Msg("Failed to convert msg.TopicID to int")
 		return err
-    }
+	}
 
 	err = waitCreation("topics", "id", strconv.Itoa(topId))
-    if err != nil {
+	if err != nil {
 		log.Error().Err(err).Msg("TopicId is still not exist in DB. Exiting...")
 		return err
-    }
+	}
 
 	_, err = dbPool.Exec(context.Background(), `
 		INSERT INTO worker_registrations (
@@ -445,18 +443,18 @@ func insertAddress(t string, address sql.NullString, pub_key sql.NullString, mem
 
 func insertMsgFundTopic(height uint64, messageId uint64, msg types.MsgFundTopic) error {
 	topId, err := strconv.Atoi(msg.TopicID)
-    if err != nil {
+	if err != nil {
 		log.Error().Err(err).Msg("Failed to convert msg.TopicID to int in insertMsgFundTopic")
 		return err
-    }
+	}
 
 	insertAddress("allora", sql.NullString{msg.Sender, true}, sql.NullString{"", false}, "")
 
 	err = waitCreation("topics", "id", strconv.Itoa(topId))
-    if err != nil {
+	if err != nil {
 		log.Error().Err(err).Msg("TopicId is still not exist in DB. Exiting...")
 		return err
-    }
+	}
 
 	_, err = dbPool.Exec(context.Background(), `
 		INSERT INTO transfers (
@@ -477,12 +475,12 @@ func insertMsgFundTopic(height uint64, messageId uint64, msg types.MsgFundTopic)
 }
 func insertMsgSend(height uint64, messageId uint64, msg types.MsgSend) error {
 
-	err :=insertAddress("allora", sql.NullString{msg.FromAddress, true}, sql.NullString{"", false}, "")
+	err := insertAddress("allora", sql.NullString{msg.FromAddress, true}, sql.NullString{"", false}, "")
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to insert insertMsgSend insertAddress")
 		return err
 	}
-	err =insertAddress("allora", sql.NullString{msg.ToAddress, true}, sql.NullString{"", false}, "")
+	err = insertAddress("allora", sql.NullString{msg.ToAddress, true}, sql.NullString{"", false}, "")
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to insert insertMsgSend insertAddress")
 		return err

@@ -3,14 +3,16 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
 	"os/exec"
 	"os/signal"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/spf13/pflag"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -107,14 +109,16 @@ func main() {
 		cliAppFlag       string
 		connectionFlag   string
 		exitWhenCaughtUp bool
+		blocks           []string
 	)
 
-	flag.UintVar(&workersNum, "workersNum", 5, "Number of workers to process blocks concurrently")
-	flag.StringVar(&nodeFlag, "node", "https://allora-rpc.devnet.behindthecurtain.xyz:443", "Node address") //# https://default-node-address:443",
-	flag.StringVar(&cliAppFlag, "cliApp", "allorad", "CLI app to execute commands")
-	flag.StringVar(&connectionFlag, "conn", "postgres://pump:pump@localhost:5432/pump", "Database connection string")
-	flag.BoolVar(&exitWhenCaughtUp, "exitWhenCaughtUp", true, "Exit when last block is processed. If false will keep processing new blocks.")
-	flag.Parse()
+	pflag.UintVar(&workersNum, "workersNum", 5, "Number of workers to process blocks concurrently")
+	pflag.StringVar(&nodeFlag, "node", "https://allora-rpc.devnet.behindthecurtain.xyz:443", "Node address") //# https://default-node-address:443",
+	pflag.StringVar(&cliAppFlag, "cliApp", "allorad", "CLI app to execute commands")
+	pflag.StringVar(&connectionFlag, "conn", "postgres://pump:pump@localhost:5432/pump", "Database connection string")
+	pflag.StringSliceVar(&blocks, "blocks", nil, "A list of blocks to process.")
+	pflag.BoolVar(&exitWhenCaughtUp, "exitWhenCaughtUp", true, "Exit when last block is processed. If false will keep processing new blocks.")
+	pflag.Parse()
 
 	// define the commands to execute payloads
 	config = ClientConfig{
@@ -166,9 +170,20 @@ func main() {
 	}
 	defer wgBlocks.Wait() // Wait for all workers to finish at the end of the main function
 
-	// Emit heights to process into channel
-	// Todo we can listen for new blocks via websocket and emit them to the channel
-	generateBlocksLoop(ctx, signalChan, heightsChan, exitWhenCaughtUp)
+	if len(blocks) > 0 {
+		log.Info().Msgf("Processing only particular locks: %v", blocks)
+		for _, block := range blocks {
+			height, err := strconv.ParseUint(block, 10, 64)
+			if err != nil {
+				log.Fatal().Err(err).Msgf("Failed to parse block height: %s", block)
+			}
+			heightsChan <- height
+		}
+	} else {
+		// If no blocks are provided, start the main loop
+		log.Info().Msg("Starting main loop...")
+		generateBlocksLoop(ctx, signalChan, heightsChan, exitWhenCaughtUp)
+	}
 
 	log.Info().Msg("Exited main loop, waiting for subroutines to finish...")
 	cancel()
@@ -244,16 +259,12 @@ func worker(ctx context.Context, wgBlocks *sync.WaitGroup, heightsChan <-chan ui
 				}
 				wgTxs.Wait()
 			}
-			err = writeBlock(config, block)
-			if err != nil {
-				log.Fatal().Err(err).Msgf("Failed to writeBlock, height: %d", height)
-			}
 
 			// Events
 			log.Info().Msgf("Processing height: %d", height)
-			err = processBlock(height)
+			err = processBlock(config, height)
 			if err != nil {
-				log.Fatal().Err(err).Msg("Failed to fetchBlock block height")
+				log.Error().Err(err).Msg("Failed to get block events")
 			}
 		}
 	}
