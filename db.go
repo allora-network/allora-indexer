@@ -73,6 +73,7 @@ func setupDB() {
 	executeSQL(createBlockInfoTableSQL())
 	executeSQL(createConsensusParamsTableSQL())
 	executeSQL(createMessagesTablesSQL())
+	executeSQL(createEventsTablesSQL())
 }
 
 func executeSQL(sqlStatement string) {
@@ -326,7 +327,7 @@ func createMessagesTablesSQL() string {
 
 }
 
-func createEventsablesSQL() string {
+func createEventsTablesSQL() string {
 	return `
 	CREATE TABLE IF NOT EXISTS events (
 		id SERIAL PRIMARY KEY,
@@ -336,6 +337,27 @@ func createEventsablesSQL() string {
 		data JSONB,
 		FOREIGN KEY (height) REFERENCES block_info(height),
 		CONSTRAINT "events_height_data" UNIQUE ("height", "data")
+	);
+
+
+	CREATE TABLE IF NOT EXISTS scores (
+		id SERIAL PRIMARY KEY,
+		height BIGINT,
+		topic_id INT,
+		type VARCHAR(255),
+		address VARCHAR(255),
+		value NUMERIC,
+		FOREIGN KEY (height) REFERENCES block_info(height)
+	);
+
+	CREATE TABLE IF NOT EXISTS rewards (
+		id SERIAL PRIMARY KEY,
+		height BIGINT,
+		topic_id INT,
+		type VARCHAR(255),
+		address VARCHAR(255),
+		value NUMERIC,
+		FOREIGN KEY (height) REFERENCES block_info(height)
 	);
 	`
 }
@@ -447,6 +469,7 @@ type EventRecord struct {
 }
 
 func insertEvents(events []EventRecord) error {
+	log.Debug().Int("events", len(events)).Msg("inserting events")
 	for _, event := range events {
 		data, err := json.Marshal(event.Data)
 		if err != nil {

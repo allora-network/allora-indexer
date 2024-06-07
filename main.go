@@ -217,51 +217,45 @@ func worker(ctx context.Context, wgBlocks *sync.WaitGroup, heightsChan <-chan ui
 		case height, ok := <-heightsChan:
 			if !ok {
 				// heightsChan was closed, stop the worker
+				log.Warn().Msg("heightsChan closed, stopping worker")
 				return
 			}
+			// Tx
 			log.Info().Msgf("Processing height: %d", height)
-			block, err := FetchEventBlockData(height)
+			block, err := fetchBlock(config, height)
 			if err != nil {
 				log.Fatal().Err(err).Msg("Failed to fetchBlock block height")
 			}
-			log.Info().Msgf("fetchBlock height: %d, len(events): %d", height, len(block.Result.FinalizeBlockEvents))
-			log.Info().Msgf("Events: %v ", block.Result.FinalizeBlockEvents)
+			log.Info().Msgf("fetchBlock height: %d, len(TXs): %d", height, len(block.Data.Txs))
+			err = writeBlock(config, block)
+			if err != nil {
+				log.Fatal().Err(err).Msgf("Failed to writeBlock, height: %d", height)
+			}
+
+			log.Info().Msgf("Write height: %d", height)
+
+			if len(block.Data.Txs) > 0 {
+				log.Info().Msgf("Processing txs at height: %d", height)
+				wgTxs := sync.WaitGroup{}
+				for _, encTx := range block.Data.Txs {
+					wgTxs.Add(1)
+					log.Info().Msgf("Processing height: %d, encTx: %s", height, encTx)
+					go processTx(&wgTxs, height, encTx)
+				}
+				wgTxs.Wait()
+			}
+			err = writeBlock(config, block)
+			if err != nil {
+				log.Fatal().Err(err).Msgf("Failed to writeBlock, height: %d", height)
+			}
+
+			// Events
+			log.Info().Msgf("Processing height: %d", height)
+			err = processBlock(height)
+			if err != nil {
+				log.Fatal().Err(err).Msg("Failed to fetchBlock block height")
+			}
 		}
 	}
 
-	// for height := range heightsChan {
-	// 	log.Info().Msgf("Processing height: %d", height)
-	// 	// block, err := fetchBlock(config, height)
-	// 	// if err != nil {
-	// 	// 	log.Fatal().Err(err).Msg("Failed to fetchBlock block height")
-	// 	// }
-	// 	// log.Info().Msgf("fetchBlock height: %d, len(TXs): %d", height, len(block.Data.Txs))
-	// 	// err = writeBlock(config, block)
-	// 	// if err != nil {
-	// 	// 	log.Fatal().Err(err).Msgf("Failed to writeBlock, height: %d", height)
-	// 	// }
-
-	// 	// log.Info().Msgf("Write height: %d", height)
-
-	// 	// if len(block.Data.Txs) > 0 {
-	// 	// 	log.Info().Msgf("Processing txs at height: %d", height)
-	// 	// 	wgTxs := sync.WaitGroup{}
-	// 	// 	for _, encTx := range block.Data.Txs {
-	// 	// 		wgTxs.Add(1)
-	// 	// 		log.Info().Msgf("Processing height: %d, encTx: %s", height, encTx)
-	// 	// 		go processTx(&wgTxs, height, encTx)
-	// 	// 	}
-	// 	// 	wgTxs.Wait()
-	// 	// }
-	// 	block, err := FetchEventBlockData(height)
-	// 	if err != nil {
-	// 		log.Fatal().Err(err).Msg("Failed to fetchBlock block height")
-	// 	}
-	// 	log.Info().Msgf("fetchBlock height: %d, len(events): %d", height, len(block.Result.FinalizeBlockEvents))
-	// 	log.Info().Msgf("Events: %v ", block.Result.FinalizeBlockEvents)
-	// 	// err = writeBlock(config, block)
-	// 	// if err != nil {
-	// 	// 	log.Fatal().Err(err).Msgf("Failed to writeBlock, height: %d", height)
-	// 	// }
-	// }
 }

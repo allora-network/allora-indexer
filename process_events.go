@@ -1,11 +1,12 @@
 package main
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/rs/zerolog/log"
 )
 
 const baseURL = "https://allora-rpc.edgenet.allora.network/block_results?height="
@@ -73,13 +74,15 @@ func FilterEvents(events []Event, whitelist map[string]bool) []Event {
 	return filteredEvents
 }
 
-func processBlock(db *sql.DB, height uint64) error {
+func processBlock(height uint64) error {
 	blockData, err := FetchEventBlockData(height)
 	if err != nil {
 		return fmt.Errorf("failed to fetch block data: %w", err)
 	}
+	log.Debug().Uint64("height", height).Int("num_events", len(blockData.Result.FinalizeBlockEvents)).Msg("Processing block, events")
 
 	filteredEvents := FilterEvents(blockData.Result.FinalizeBlockEvents, event_whitelist)
+	log.Debug().Uint64("height", height).Int("num_events", len(filteredEvents)).Msg("Processing block")
 
 	var eventRecords []EventRecord
 	for _, event := range filteredEvents {
