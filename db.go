@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -50,8 +51,8 @@ func initDB(dataSourceName string) {
 	// dbPool, err = pgx.Connect(context.Background(), dataSourceName)
 
 	dbConfig, err := pgxpool.ParseConfig(dataSourceName)
-	if err!=nil {
-	 log.Fatal().Err(err).Msg("Failed to create a config, error: ")
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to create a config, error: ")
 	}
 	dbPool, err = pgxpool.NewWithConfig(context.Background(), dbConfig)
 	if err != nil {
@@ -293,7 +294,6 @@ func createMessagesTablesSQL() string {
 	// FOREIGN KEY (block_height) REFERENCES block_info(height),
 	// FOREIGN KEY (block_height) REFERENCES block_info(height),
 
-
 	// CREATE TABLE IF NOT EXISTS signer_infos (
 	// 	id SERIAL PRIMARY KEY,
 	// 	auth_info_id INT,
@@ -324,7 +324,20 @@ func createMessagesTablesSQL() string {
 	// 	FOREIGN KEY (auth_info_id) REFERENCES auth_info(id)
 	// );
 
+}
 
+func createEventsablesSQL() string {
+	return `
+	CREATE TABLE IF NOT EXISTS events (
+		id SERIAL PRIMARY KEY,
+		height BIGINT,
+		type VARCHAR(255),
+		sender VARCHAR(255),
+		data JSONB,
+		FOREIGN KEY (height) REFERENCES block_info(height),
+		CONSTRAINT "events_height_data" UNIQUE ("height", "data")
+	);
+	`
 }
 
 func insertBlockInfo(blockInfo DBBlockInfo) error {
@@ -423,4 +436,29 @@ func isUniqueViolation(err error) bool {
 		return pgErr.Code == "23505" // 23505 is the code for unique violation in PostgreSQL
 	}
 	return false
+}
+
+// Events
+type EventRecord struct {
+	Height uint64
+	Type   string
+	Sender string
+	Data   json.RawMessage
+}
+
+func insertEvents(events []EventRecord) error {
+	for _, event := range events {
+		data, err := json.Marshal(event.Data)
+		if err != nil {
+			return err
+		}
+		_, err = dbPool.Exec(context.Background(), `
+			INSERT INTO events (height, type, sender, data) VALUES ($1, $2, $3, $4) 
+			ON CONFLICT (height, data) DO NOTHING`,
+			event.Height, event.Type, event.Sender, data)
+		if err != nil {
+			return fmt.Errorf("event insert failed: %v", err)
+		}
+	}
+	return nil
 }

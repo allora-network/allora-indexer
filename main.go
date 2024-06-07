@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
+
 type Command struct {
 	Parts []string
 }
@@ -23,8 +25,9 @@ type ClientConfig struct {
 	CliApp   string
 	Commands map[string]Command
 }
+
 var config ClientConfig
-var workersNum	   uint
+var workersNum uint
 
 func ExecuteCommand(cliApp, node string, parts []string) ([]byte, error) {
 	if len(parts) == 0 {
@@ -100,9 +103,9 @@ func main() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
 	var (
-		nodeFlag       string
-		cliAppFlag     string
-		connectionFlag string
+		nodeFlag         string
+		cliAppFlag       string
+		connectionFlag   string
 		exitWhenCaughtUp bool
 	)
 
@@ -128,13 +131,13 @@ func main() {
 				Parts: []string{"{cliApp}", "query", "consensus", "params", "--node", "{node}", "--output", "json"},
 			},
 			"decodeTx": {
-				Parts: []string{"{cliApp}", "tx", "decode", "--node", "{node}", "--output", "json"},   // Requires , "{txData}"
+				Parts: []string{"{cliApp}", "tx", "decode", "--node", "{node}", "--output", "json"}, // Requires , "{txData}"
 			},
 			"nextTopicId": {
 				Parts: []string{"{cliApp}", "query", "emissions", "next-topic-id", "--node", "{node}", "--output", "json"},
 			},
 			"topicById": {
-				Parts: []string{"{cliApp}", "query", "emissions", "topic", "--node", "{node}", "--output", "json"},   // Requires "{topic}"
+				Parts: []string{"{cliApp}", "query", "emissions", "topic", "--node", "{node}", "--output", "json"}, // Requires "{topic}"
 			},
 		},
 	}
@@ -149,17 +152,31 @@ func main() {
 
 	wgBlocks := sync.WaitGroup{}
 
+	// Set a cancel context to stop the workers
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Set up a channel to listen for block heights to process
-    heightsChan := make(chan uint64, workersNum)
+	heightsChan := make(chan uint64, workersNum)
+	defer close(heightsChan)
 
 	for j := uint(1); j <= workersNum; j++ {
 		wgBlocks.Add(1)
-		go worker(&wgBlocks, heightsChan)
+		go worker(ctx, &wgBlocks, heightsChan)
 	}
+	defer wgBlocks.Wait() // Wait for all workers to finish at the end of the main function
 
 	// Emit heights to process into channel
 	// Todo we can listen for new blocks via websocket and emit them to the channel
-	for{
+	generateBlocksLoop(ctx, signalChan, heightsChan, exitWhenCaughtUp)
+
+	log.Info().Msg("Exited main loop, waiting for subroutines to finish...")
+	cancel()
+}
+
+// Generates the block heights to process in an infinite loop
+func generateBlocksLoop(ctx context.Context, signalChan <-chan os.Signal, heightsChan chan<- uint64, exitWhenCaughtUp bool) {
+	for {
 		lastProcessedHeight, err := getLatestBlockHeightFromDB()
 		if err != nil {
 			log.Fatal().Err(err).Msg("Failed to getLatestBlockHeightFromDB")
@@ -174,7 +191,9 @@ func main() {
 			select {
 			case <-signalChan:
 				log.Info().Msg("Shutdown signal received, exiting...")
-				// cancel()
+				return
+			case <-ctx.Done():
+				log.Info().Msg("Context cancelled, exiting...")
 				return
 			default:
 				heightsChan <- w
@@ -186,37 +205,63 @@ func main() {
 		}
 		time.Sleep(5 * time.Second)
 	}
-	close(heightsChan)
-	wgBlocks.Wait() // Wait for all workers to finish
-	log.Info().Msg("All workers finished")
-
 }
 
-func worker(wgBlocks *sync.WaitGroup, heightsChan <-chan uint64){
+func worker(ctx context.Context, wgBlocks *sync.WaitGroup, heightsChan <-chan uint64) {
 	defer wgBlocks.Done()
-	for height := range heightsChan {
-		log.Info().Msgf("Processing height: %d", height)
-		block, err := fetchBlock(config, height)
-		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to fetchBlock block height")
-		}
-		log.Info().Msgf("fetchBlock height: %d, len(TXs): %d", height, len(block.Data.Txs))
-		err = writeBlock(config, block)
-		if err != nil {
-			log.Fatal().Err(err).Msgf("Failed to writeBlock, height: %d", height)
-		}
-
-		log.Info().Msgf("Write height: %d", height)
-
-		if len(block.Data.Txs) > 0 {
-			log.Info().Msgf("Processing txs at height: %d", height)
-			wgTxs := sync.WaitGroup{}
-			for _, encTx := range block.Data.Txs {
-				wgTxs.Add(1)
-				log.Info().Msgf("Processing height: %d, encTx: %s", height, encTx)
-				go processTx(&wgTxs, height, encTx)
+	for {
+		select {
+		case <-ctx.Done():
+			// Context was cancelled, stop the worker
+			return
+		case height, ok := <-heightsChan:
+			if !ok {
+				// heightsChan was closed, stop the worker
+				return
 			}
-			wgTxs.Wait()
+			log.Info().Msgf("Processing height: %d", height)
+			block, err := FetchEventBlockData(height)
+			if err != nil {
+				log.Fatal().Err(err).Msg("Failed to fetchBlock block height")
+			}
+			log.Info().Msgf("fetchBlock height: %d, len(events): %d", height, len(block.Result.FinalizeBlockEvents))
+			log.Info().Msgf("Events: %v ", block.Result.FinalizeBlockEvents)
 		}
 	}
+
+	// for height := range heightsChan {
+	// 	log.Info().Msgf("Processing height: %d", height)
+	// 	// block, err := fetchBlock(config, height)
+	// 	// if err != nil {
+	// 	// 	log.Fatal().Err(err).Msg("Failed to fetchBlock block height")
+	// 	// }
+	// 	// log.Info().Msgf("fetchBlock height: %d, len(TXs): %d", height, len(block.Data.Txs))
+	// 	// err = writeBlock(config, block)
+	// 	// if err != nil {
+	// 	// 	log.Fatal().Err(err).Msgf("Failed to writeBlock, height: %d", height)
+	// 	// }
+
+	// 	// log.Info().Msgf("Write height: %d", height)
+
+	// 	// if len(block.Data.Txs) > 0 {
+	// 	// 	log.Info().Msgf("Processing txs at height: %d", height)
+	// 	// 	wgTxs := sync.WaitGroup{}
+	// 	// 	for _, encTx := range block.Data.Txs {
+	// 	// 		wgTxs.Add(1)
+	// 	// 		log.Info().Msgf("Processing height: %d, encTx: %s", height, encTx)
+	// 	// 		go processTx(&wgTxs, height, encTx)
+	// 	// 	}
+	// 	// 	wgTxs.Wait()
+	// 	// }
+	// 	block, err := FetchEventBlockData(height)
+	// 	if err != nil {
+	// 		log.Fatal().Err(err).Msg("Failed to fetchBlock block height")
+	// 	}
+	// 	log.Info().Msgf("fetchBlock height: %d, len(events): %d", height, len(block.Result.FinalizeBlockEvents))
+	// 	log.Info().Msgf("Events: %v ", block.Result.FinalizeBlockEvents)
+	// 	// err = writeBlock(config, block)
+	// 	// if err != nil {
+	// 	// 	log.Fatal().Err(err).Msgf("Failed to writeBlock, height: %d", height)
+	// 	// }
+	// }
 }
