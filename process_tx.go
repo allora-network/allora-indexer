@@ -22,7 +22,7 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 	// Decode the transaction using the decodeTx function
 	txMessage, err := ExecuteCommandByKey[types.Tx](config, "decodeTx", txData)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to execute command")
+		log.Error().Err(err).Msg("Failed to execute command")
 	}
 
 	// Process the decoded transaction message
@@ -30,7 +30,7 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 		mtype := msg["@type"].(string) //fmt.Sprint(msg["@type"])
 		mjson, err := json.Marshal(msg)
 		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to unmarshal msg")
+			log.Error().Err(err).Msg("Failed to unmarshal msg")
 		}
 		var creator string
 		if msg["creator"] != nil {
@@ -40,14 +40,14 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 		} else if msg["from_address"] != nil {
 			creator = msg["from_address"].(string)
 		} else {
-			log.Fatal().Msg("Cannot define creator!!!")
+			log.Error().Msg("Cannot define creator!!!")
 		}
 
 		var messageId uint64
 		log.Info().Msgf("Inserting message, height: %d", height)
 		messageId, err = insertMessage(height, mtype, creator, string(mjson))
 		if err != nil {
-			log.Fatal().Err(err).Msgf("Failed to insertMessage, height: %d", height)
+			log.Error().Err(err).Msgf("Failed to insertMessage, height: %d", height)
 		}
 
 		switch mtype {
@@ -59,7 +59,7 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 			json.Unmarshal(mjson, &topicPayload)
 			insertMsgCreateNewTopic(height, messageId, topicPayload)
 			if err != nil {
-				log.Fatal().Err(err).Msgf("Failed to insertMsgCreateNewTopic, height: %d", height)
+				log.Error().Err(err).Msgf("Failed to insertMsgCreateNewTopic, height: %d", height)
 			}
 
 		case "/emissions.v1.MsgFundTopic", "/emissions.v1.MsgAddStake":
@@ -70,7 +70,7 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 			json.Unmarshal(mjson, &msgFundTopic)
 			insertMsgFundTopic(height, messageId, msgFundTopic)
 			if err != nil {
-				log.Fatal().Err(err).Msgf("Failed to insertMsgFundTopic, height: %d", height)
+				log.Error().Err(err).Msgf("Failed to insertMsgFundTopic, height: %d", height)
 			}
 
 		case "/cosmos.bank.v1beta1.MsgSend":
@@ -81,7 +81,7 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 			json.Unmarshal(mjson, &msgSend)
 			insertMsgSend(height, messageId, msgSend)
 			if err != nil {
-				log.Fatal().Err(err).Msgf("Failed to insertMsgSend, height: %d", height)
+				log.Error().Err(err).Msgf("Failed to insertMsgSend, height: %d", height)
 			}
 
 		case "/emissions.v1.MsgRegister":
@@ -91,7 +91,7 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 			json.Unmarshal(mjson, &msgRegister)
 			insertMsgRegister(height, messageId, msgRegister)
 			if err != nil {
-				log.Fatal().Err(err).Msgf("Failed to insertMsgRegister, height: %d", height)
+				log.Error().Err(err).Msgf("Failed to insertMsgRegister, height: %d", height)
 			}
 
 		case "/emissions.v1.MsgInsertBulkWorkerPayload":
@@ -101,7 +101,7 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 			json.Unmarshal(mjson, &workerPayload)
 			insertBulkWorkerPayload(height, messageId, workerPayload)
 			if err != nil {
-				log.Fatal().Err(err).Msgf("Failed to insertBulkWorkerPayload, height: %d", height)
+				log.Error().Err(err).Msgf("Failed to insertBulkWorkerPayload, height: %d", height)
 			}
 
 		case "/emissions.v1.MsgInsertBulkReputerPayload":
@@ -111,7 +111,7 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 			json.Unmarshal(mjson, &reputerPayload)
 			insertBulkReputerPayload(height, messageId, reputerPayload)
 			if err != nil {
-				log.Fatal().Err(err).Msgf("Failed to insertInferenceForcasts, height: %d", height)
+				log.Error().Err(err).Msgf("Failed to insertInferenceForcasts, height: %d", height)
 			}
 
 		default:
@@ -121,7 +121,6 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 }
 
 func insertBulkReputerPayload(blockHeight uint64, messageId uint64, msg types.MsgInsertBulkReputerPayload) error {
-
 
 	worker_nonce_block_height, err := strconv.Atoi(msg.ReputerRequestNonce.WorkerNonce.BlockHeight)
 	reputer_nonce_block_height, err := strconv.Atoi(msg.ReputerRequestNonce.ReputerNonce.BlockHeight)
@@ -146,7 +145,7 @@ func insertBulkReputerPayload(blockHeight uint64, messageId uint64, msg types.Ms
 	var bundleId uint64
 	for _, bundle := range msg.ReputerValueBundles {
 
-		err :=insertAddress("allora", sql.NullString{"", false}, sql.NullString{bundle.Pubkey, true}, "")
+		err := insertAddress("allora", sql.NullString{"", false}, sql.NullString{bundle.Pubkey, true}, "")
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to insert bundle.Pubkey insertAddress")
 			return err
@@ -352,7 +351,6 @@ func insertBulkWorkerPayload(blockHeight uint64, messageId uint64, inf types.Msg
 			log.Error().Msgf("Message TopicID not equal inference TopicID!!!!")
 		}
 
-
 	}
 
 	return nil
@@ -392,16 +390,16 @@ func insertMsgRegister(height uint64, messageId uint64, msg types.MsgRegister) e
 	}
 
 	topId, err := strconv.Atoi(msg.TopicID)
-    if err != nil {
+	if err != nil {
 		log.Error().Err(err).Msg("Failed to convert msg.TopicID to int")
 		return err
-    }
+	}
 
 	err = waitCreation("topics", "id", strconv.Itoa(topId))
-    if err != nil {
+	if err != nil {
 		log.Error().Err(err).Msg("TopicId is still not exist in DB. Exiting...")
 		return err
-    }
+	}
 
 	_, err = dbPool.Exec(context.Background(), `
 		INSERT INTO worker_registrations (
@@ -445,18 +443,18 @@ func insertAddress(t string, address sql.NullString, pub_key sql.NullString, mem
 
 func insertMsgFundTopic(height uint64, messageId uint64, msg types.MsgFundTopic) error {
 	topId, err := strconv.Atoi(msg.TopicID)
-    if err != nil {
+	if err != nil {
 		log.Error().Err(err).Msg("Failed to convert msg.TopicID to int in insertMsgFundTopic")
 		return err
-    }
+	}
 
 	insertAddress("allora", sql.NullString{msg.Sender, true}, sql.NullString{"", false}, "")
 
 	err = waitCreation("topics", "id", strconv.Itoa(topId))
-    if err != nil {
+	if err != nil {
 		log.Error().Err(err).Msg("TopicId is still not exist in DB. Exiting...")
 		return err
-    }
+	}
 
 	_, err = dbPool.Exec(context.Background(), `
 		INSERT INTO transfers (
@@ -477,12 +475,12 @@ func insertMsgFundTopic(height uint64, messageId uint64, msg types.MsgFundTopic)
 }
 func insertMsgSend(height uint64, messageId uint64, msg types.MsgSend) error {
 
-	err :=insertAddress("allora", sql.NullString{msg.FromAddress, true}, sql.NullString{"", false}, "")
+	err := insertAddress("allora", sql.NullString{msg.FromAddress, true}, sql.NullString{"", false}, "")
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to insert insertMsgSend insertAddress")
 		return err
 	}
-	err =insertAddress("allora", sql.NullString{msg.ToAddress, true}, sql.NullString{"", false}, "")
+	err = insertAddress("allora", sql.NullString{msg.ToAddress, true}, sql.NullString{"", false}, "")
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to insert insertMsgSend insertAddress")
 		return err
