@@ -170,11 +170,11 @@ func main() {
 	defer wgBlocks.Wait() // Wait for all workers to finish at the end of the main function
 
 	if len(blocks) > 0 {
-		log.Info().Msgf("Processing only particular locks: %v", blocks)
+		log.Info().Msgf("Processing only particular blocks: %v", blocks)
 		for _, block := range blocks {
 			height, err := strconv.ParseUint(block, 10, 64)
 			if err != nil {
-				log.Fatal().Err(err).Msgf("Failed to parse block height: %s", block)
+				log.Error().Err(err).Msgf("Failed to parse block height: %s", block)
 			}
 			heightsChan <- height
 		}
@@ -193,11 +193,11 @@ func generateBlocksLoop(ctx context.Context, signalChan <-chan os.Signal, height
 	for {
 		lastProcessedHeight, err := getLatestBlockHeightFromDB()
 		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to getLatestBlockHeightFromDB")
+			log.Error().Err(err).Msg("Failed to getLatestBlockHeightFromDB")
 		}
 		chainLatestHeight, err := getLatestHeight()
 		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to getLatestHeight")
+			log.Error().Err(err).Msg("Failed to getLatestHeight from chain")
 		}
 		log.Info().Msgf("Processing heights from %d to %d", lastProcessedHeight, chainLatestHeight)
 		// Emit heights to process into channel
@@ -238,12 +238,12 @@ func worker(ctx context.Context, wgBlocks *sync.WaitGroup, heightsChan <-chan ui
 			log.Info().Msgf("Processing height: %d", height)
 			block, err := fetchBlock(config, height)
 			if err != nil {
-				log.Fatal().Err(err).Msg("Failed to fetchBlock block height")
+				log.Error().Err(err).Msg("Worker: Failed to fetchBlock block height")
 			}
 			log.Info().Msgf("fetchBlock height: %d, len(TXs): %d", height, len(block.Data.Txs))
 			err = writeBlock(config, block)
 			if err != nil {
-				log.Fatal().Err(err).Msgf("Failed to writeBlock, height: %d", height)
+				log.Error().Err(err).Msgf("Worker: Failed to writeBlock, height: %d", height)
 			}
 
 			log.Info().Msgf("Write height: %d", height)
