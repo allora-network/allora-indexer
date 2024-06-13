@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -131,7 +132,6 @@ func createMessagesTablesSQL() string {
 		type VARCHAR(255),
 		sender VARCHAR(255),
 		data JSONB,
-		FOREIGN KEY (height) REFERENCES block_info(height),
 		CONSTRAINT "messages_height_data" UNIQUE ("height", "data")
 	);
 
@@ -154,9 +154,7 @@ func createMessagesTablesSQL() string {
 		f_tolerance VARCHAR(255),
 		allow_negative BOOLEAN,
 		message_height INT,
-		message_id INT,
-		FOREIGN KEY (message_height) REFERENCES block_info(height),
-		FOREIGN KEY (message_id) REFERENCES messages(id)
+		message_id INT
 	);
 
 	CREATE TABLE IF NOT EXISTS addresses (
@@ -164,9 +162,7 @@ func createMessagesTablesSQL() string {
 		pub_key VARCHAR(255) NULL DEFAULT null,
 		type VARCHAR(255) NULL DEFAULT null,
 		memo VARCHAR(255) NULL DEFAULT null,
-		address VARCHAR(255) NULL DEFAULT null,
-		CONSTRAINT "addresses_address" UNIQUE ("address"),
-		CONSTRAINT "addresses_pub_key" UNIQUE ("pub_key")
+		address VARCHAR(255) NULL DEFAULT null
 	);
 
 	CREATE TABLE IF NOT EXISTS worker_registrations (
@@ -176,13 +172,7 @@ func createMessagesTablesSQL() string {
 		sender VARCHAR(255),
 		owner VARCHAR(255),
 		worker_libp2pkey VARCHAR(255),
-		is_reputer BOOLEAN,
-		FOREIGN KEY (message_height) REFERENCES block_info(height),
-		FOREIGN KEY (message_id) REFERENCES messages(id),
-		FOREIGN KEY (topic_id) REFERENCES topics(id),
-		FOREIGN KEY (sender) REFERENCES addresses(address),
-		FOREIGN KEY (owner) REFERENCES addresses(address),
-		FOREIGN KEY (worker_libp2pkey) REFERENCES addresses(pub_key)
+		is_reputer BOOLEAN
 	);
 
 	CREATE TABLE IF NOT EXISTS transfers (
@@ -193,12 +183,7 @@ func createMessagesTablesSQL() string {
 		topic_id INT NULL DEFAULT null,
 		to_address VARCHAR(255) NULL DEFAULT null,
 		amount VARCHAR(255),
-		denom VARCHAR(255),
-		FOREIGN KEY (message_height) REFERENCES block_info(height),
-		FOREIGN KEY (message_id) REFERENCES messages(id),
-		FOREIGN KEY (topic_id) REFERENCES topics(id),
-		FOREIGN KEY (from_address) REFERENCES addresses(address),
-		FOREIGN KEY (to_address) REFERENCES addresses(address)
+		denom VARCHAR(255)
 	);
 
 	CREATE TABLE IF NOT EXISTS inferences (
@@ -211,32 +196,24 @@ func createMessagesTablesSQL() string {
 		inferer VARCHAR(255),
 		value VARCHAR(255),
 		extra_data TEXT,
-		proof TEXT,
-		FOREIGN KEY (message_id) REFERENCES messages(id),
-		FOREIGN KEY (topic_id) REFERENCES topics(id),
-		FOREIGN KEY (inferer) REFERENCES addresses(address)
+		proof TEXT
 	);
 
-	CREATE TABLE IF NOT EXISTS forcasts (
+	CREATE TABLE IF NOT EXISTS forecasts (
 		id SERIAL PRIMARY KEY,
 		message_height INT,
 		message_id INT,
 		nonce_block_height INT,
 		topic_id INT,
 		block_height INT,
-		forcaster VARCHAR(255),
-		extra_data VARCHAR(255),
-		FOREIGN KEY (message_id) REFERENCES messages(id),
-		FOREIGN KEY (topic_id) REFERENCES topics(id),
-		FOREIGN KEY (forcaster) REFERENCES addresses(address)
+		forecaster VARCHAR(255),
+		extra_data VARCHAR(255)
 	);
 
-	CREATE TABLE IF NOT EXISTS forcast_values (
-		forcast_id INT,
+	CREATE TABLE IF NOT EXISTS forecast_values (
+		forecast_id INT,
 		value VARCHAR(255),
-		inferer VARCHAR(255),
-		FOREIGN KEY (inferer) REFERENCES addresses(address),
-		FOREIGN KEY (forcast_id) REFERENCES forcasts(id)
+		inferer VARCHAR(255)
 	);
 
 	CREATE TABLE IF NOT EXISTS reputer_payload (
@@ -246,10 +223,7 @@ func createMessagesTablesSQL() string {
 		sender VARCHAR(255),
 		worker_nonce_block_height INT,
 		reputer_nonce_block_height INT,
-		topic_id INT,
-		FOREIGN KEY (message_id) REFERENCES messages(id),
-		FOREIGN KEY (sender) REFERENCES addresses(address),
-		FOREIGN KEY (topic_id) REFERENCES topics(id)
+		topic_id INT
 	);
 
 	CREATE TABLE IF NOT EXISTS reputer_bundles (
@@ -263,11 +237,7 @@ func createMessagesTablesSQL() string {
 		naive_value  VARCHAR(255),
 		combined_value    VARCHAR(255),
 		reputer_request_worker_nonce  INT,
-		reputer_request_reputer_nonce  INT,
-		FOREIGN KEY (reputer_payload_id) REFERENCES reputer_payload(id),
-		FOREIGN KEY (pubkey) REFERENCES addresses(pub_key),
-		FOREIGN KEY (reputer) REFERENCES addresses(address),
-		FOREIGN KEY (topic_id) REFERENCES topics(id)
+		reputer_request_reputer_nonce  INT
 	);
 
 	DO $$ BEGIN
@@ -286,9 +256,7 @@ func createMessagesTablesSQL() string {
 		bundle_id INT,
 		reputer_value_type reputerValueType,
 		value VARCHAR(255),
-		worker VARCHAR(255),
-		FOREIGN KEY (bundle_id) REFERENCES reputer_bundles(id),
-		FOREIGN KEY (worker) REFERENCES addresses(address)
+		worker VARCHAR(255)
 	);`
 
 	// FOREIGN KEY (block_height) REFERENCES block_info(height),
@@ -330,34 +298,34 @@ func createEventsTablesSQL() string {
 	return `
 	CREATE TABLE IF NOT EXISTS events (
 		id SERIAL PRIMARY KEY,
+		height_tx BIGINT,
 		height BIGINT,
 		type VARCHAR(255),
 		sender VARCHAR(255),
 		data JSONB,
-		FOREIGN KEY (height) REFERENCES block_info(height),
 		CONSTRAINT "events_height_data" UNIQUE ("height", "data")
 	);
 
 
 	CREATE TABLE IF NOT EXISTS scores (
 		id SERIAL PRIMARY KEY,
+		height_tx BIGINT,
 		height BIGINT,
 		topic_id INT,
 		type VARCHAR(255),
 		address VARCHAR(255),
 		value NUMERIC(72,18),
-		FOREIGN KEY (height) REFERENCES block_info(height),
 		CONSTRAINT unique_score_entry UNIQUE (height, topic_id, type, address)
 	);
 
 	CREATE TABLE IF NOT EXISTS rewards (
 		id SERIAL PRIMARY KEY,
+		height_tx BIGINT,
 		height BIGINT,
 		topic_id INT,
 		type VARCHAR(255),
 		address VARCHAR(255),
 		value NUMERIC(72,18),
-		FOREIGN KEY (height) REFERENCES block_info(height),
 		CONSTRAINT unique_reward_entry UNIQUE (height, topic_id, type, address)
 	);
 	`
@@ -486,9 +454,9 @@ func insertEvents(events []EventRecord) error {
 
 		// Additional handling for scores and rewards
 		switch event.Type {
-		case "inferer_scores_set", "reputer_scores_set", "forecaster_scores_set":
+		case "emissions.v1.EventScoresSet":
 			err = insertScore(event)
-		case "inferer_rewards_settled", "forecaster_rewards_settled", "reputer_and_delegator_rewards_settled":
+		case "emissions.v1.EventRewardsSettled":
 			err = insertReward(event)
 		default:
 			log.Info().Str("Event type", event.Type).Msg("skipping event type ")
@@ -511,19 +479,27 @@ func insertScore(event EventRecord) error {
 	}
 
 	var topicID int
-	var scoreType string
+	var actorType string
 	var addresses []string
 	var scores []big.Float
+	var block_height int
 
 	for _, attr := range attributes {
 		switch attr.Key {
 		case "topic_id":
-			topicID, err = strconv.Atoi(attr.Value)
+			cleanedValue := strings.Trim(attr.Value, "\"")
+			topicID, err = strconv.Atoi(cleanedValue)
 			if err != nil {
 				return err
 			}
-		case "score_type":
-			scoreType = attr.Value
+		case "actor_type":
+			actorType = strings.Trim(attr.Value, "\"")
+		case "block_height":
+			cleanedValue := strings.Trim(attr.Value, "\"")
+			block_height, err = strconv.Atoi(cleanedValue)
+			if err != nil {
+				return err
+			}
 		case "addresses":
 			err = json.Unmarshal([]byte(attr.Value), &addresses)
 			if err != nil {
@@ -543,9 +519,9 @@ func insertScore(event EventRecord) error {
 
 	for i := range addresses {
 		_, err = dbPool.Exec(context.Background(), `
-			INSERT INTO scores (height, topic_id, type, address, value) VALUES ($1, $2, $3, $4, $5) 
+			INSERT INTO scores (height_tx, height, topic_id, type, address, value) VALUES ($1, $2, $3, $4, $5, $6) 
 			ON CONFLICT (height, topic_id, type, address) DO NOTHING`,
-			event.Height, topicID, scoreType, addresses[i], scores[i].Text('f', -1))
+			event.Height, block_height, topicID, actorType, addresses[i], scores[i].Text('f', -1))
 		if err != nil {
 			return fmt.Errorf("score insert failed: %v", err)
 		}
@@ -565,16 +541,24 @@ func insertReward(event EventRecord) error {
 	var rewardType string
 	var addresses []string
 	var rewards []big.Float
+	var block_height int
 
 	for _, attr := range attributes {
 		switch attr.Key {
 		case "topic_id":
-			topicID, err = strconv.Atoi(attr.Value)
+			cleanedValue := strings.Trim(attr.Value, "\"")
+			topicID, err = strconv.Atoi(cleanedValue)
 			if err != nil {
 				return err
 			}
 		case "reward_type":
-			rewardType = attr.Value
+			rewardType = strings.Trim(attr.Value, "\"")
+		case "block_height":
+			cleanedValue := strings.Trim(attr.Value, "\"")
+			block_height, err = strconv.Atoi(cleanedValue)
+			if err != nil {
+				return err
+			}
 		case "addresses":
 			err = json.Unmarshal([]byte(attr.Value), &addresses)
 			if err != nil {
@@ -593,10 +577,10 @@ func insertReward(event EventRecord) error {
 	}
 
 	for i := range addresses {
-		_, err = dbPool.Exec(context.Background(), `
-			INSERT INTO rewards (height, topic_id, type, address, value) VALUES ($1, $2, $3, $4, $5) 
+		_, err = dbPool.Exec(context.Background(),
+			`INSERT INTO rewards (height_tx, height, topic_id, type, address, value) VALUES ($1, $2, $3, $4, $5, $6) 
 			ON CONFLICT (height, topic_id, type, address) DO NOTHING`,
-			event.Height, topicID, rewardType, addresses[i], rewards[i].Text('f', -1))
+			event.Height, block_height, topicID, rewardType, addresses[i], rewards[i].Text('f', -1))
 		if err != nil {
 			return fmt.Errorf("reward insert failed: %v", err)
 		}

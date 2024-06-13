@@ -26,12 +26,8 @@ type EventProcessing struct {
 }
 
 var event_whitelist = map[string]EventProcessing{
-	"inferer_rewards_settled":               {Type: RewardEvent},
-	"forecaster_rewards_settled":            {Type: RewardEvent},
-	"reputer_and_delegator_rewards_settled": {Type: RewardEvent},
-	"inferer_scores_set":                    {Type: ScoreEvent},
-	"reputer_scores_set":                    {Type: ScoreEvent},
-	"forecaster_scores_set":                 {Type: ScoreEvent},
+	"emissions.v1.EventScoresSet":      {Type: ScoreEvent},
+	"emissions.v1.EventRewardsSettled": {Type: RewardEvent},
 }
 
 type BlockResult struct {
