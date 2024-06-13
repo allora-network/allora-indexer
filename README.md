@@ -34,3 +34,6 @@ To start the data pump, execute the compiled Go application. It will begin to fe
 ```bash
 go run . --node=https://rpc.network:443 -cliApp=allorad --conn=postgres://default:password@localhost:5432/catalog
 ```
+
+The application will attempt to catch up from the last block found in the database.
+However, it is possible to parse only specific events by passing the flag: `--blocks=123,456,567`. It will override the default catch-up mechanism - it will only attempt to process those blocks and add them to the database. The use of this flag is expected in testing or backfilling.
