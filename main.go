@@ -113,7 +113,7 @@ func main() {
 	)
 
 	pflag.UintVar(&workersNum, "workersNum", 5, "Number of workers to process blocks concurrently")
-	pflag.StringVar(&nodeFlag, "node", "https://allora-rpc.devnet.behindthecurtain.xyz:443", "Node address") //# https://default-node-address:443",
+	pflag.StringVar(&nodeFlag, "node", "https://allora-rpc.edgenet.allora.network:443/", "Node address") //# https://default-node-address:443",
 	pflag.StringVar(&cliAppFlag, "cliApp", "allorad", "CLI app to execute commands")
 	pflag.StringVar(&connectionFlag, "conn", "postgres://pump:pump@localhost:5432/pump", "Database connection string")
 	pflag.StringSliceVar(&blocks, "blocks", nil, "A list of blocks to process.")
