@@ -9,33 +9,37 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-//* Process topics
+// * Process topics
 type TopicOutput struct {
 	Topic types.MsgCreateNewTopic `json:"topic"`
 }
 
 func insertMsgCreateNewTopic(height uint64, messageId uint64, topic types.MsgCreateNewTopic) error {
 
-	lastTopicIdStr, err := ExecuteCommandByKey[struct {NextTopicID string `json:"next_topic_id"`}](config, "nextTopicId", "--height", strconv.FormatUint(height, 10))
+	lastTopicIdStr, err := ExecuteCommandByKey[struct {
+		NextTopicID string `json:"next_topic_id"`
+	}](config, "nextTopicId", "--height", strconv.FormatUint(height, 10))
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to execute command")
 		return err
 	}
-	lastTopicIdStr1Back, err := ExecuteCommandByKey[struct {NextTopicID string `json:"next_topic_id"`}](config, "nextTopicId", "--height", strconv.FormatUint(height-1, 10))
+	lastTopicIdStr1Back, err := ExecuteCommandByKey[struct {
+		NextTopicID string `json:"next_topic_id"`
+	}](config, "nextTopicId", "--height", strconv.FormatUint(height-1, 10))
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to execute command")
 		return err
 	}
 	topId1Back, err := strconv.Atoi(lastTopicIdStr1Back.NextTopicID)
-    if err != nil {
+	if err != nil {
 		log.Error().Err(err).Msg("Failed to convert lastTopicIdStr1Back.NextTopicID to int")
 		return err
-    }
+	}
 	topId, err := strconv.Atoi(lastTopicIdStr.NextTopicID)
-    if err != nil {
+	if err != nil {
 		log.Error().Err(err).Msg("Failed to convert lastTopicIdStr.NextTopicID to int")
 		return err
-    }
+	}
 
 	for i := topId1Back; i < topId; i++ {
 		log.Info().Msgf("%d: (%d) == (%d)", i, topId, topId1Back)
@@ -47,14 +51,14 @@ func insertMsgCreateNewTopic(height uint64, messageId uint64, topic types.MsgCre
 		}
 
 		if topic.Metadata == t.Topic.Metadata {
-			err :=insertAddress("allora", sql.NullString{topic.Creator, true}, sql.NullString{"", false}, "")
+			err := insertAddress("allora", sql.NullString{topic.Creator, true}, sql.NullString{"", false}, "")
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to insert insertMsgSend insertAddress")
 				return err
 			}
 			log.Info().Msgf("Insert topic (%s, %s) into DB...", t.Topic.TopicID, t.Topic.Metadata)
 			_, err = dbPool.Exec(context.Background(), `
-				INSERT INTO topics (
+				INSERT INTO `+TB_TOPICS+` (
 					id,
 					creator,
 					metadata,

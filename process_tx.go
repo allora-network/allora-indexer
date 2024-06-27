@@ -126,7 +126,7 @@ func insertBulkReputerPayload(blockHeight uint64, messageId uint64, msg types.Ms
 	reputer_nonce_block_height, err := strconv.Atoi(msg.ReputerRequestNonce.ReputerNonce.BlockHeight)
 	var payloadId uint64
 	err = dbPool.QueryRow(context.Background(), `
-		INSERT INTO reputer_payload (
+		INSERT INTO `+TB_REPUTER_PAYLOAD+` (
 			message_height,
 			message_id,
 			sender,
@@ -151,7 +151,7 @@ func insertBulkReputerPayload(blockHeight uint64, messageId uint64, msg types.Ms
 			return err
 		}
 		err = dbPool.QueryRow(context.Background(), `
-			INSERT INTO reputer_bundles (
+			INSERT INTO `+TB_REPUTER_BUNDLES+` (
 				reputer_payload_id,
 				pubkey,
 				signature,
@@ -172,85 +172,9 @@ func insertBulkReputerPayload(blockHeight uint64, messageId uint64, msg types.Ms
 			log.Error().Err(err).Msg("Failed to insert reputer_bundles")
 			return err
 		}
-		//Insert InfererValues
-		for _, val := range bundle.ValueBundle.InfererValues {
-			_, err := dbPool.Exec(context.Background(), `
-				INSERT INTO bundle_values (
-					bundle_id,
-					reputer_value_type,
-					worker,
-					value
-				) VALUES ($1, $2, $3, $4)`,
-				bundleId, "InfererValues", val.Worker, val.Value,
-			)
-			if err != nil {
-				log.Error().Err(err).Msg("Failed to insert InfererValues bundle_values")
-				return err
-			}
-		}
-		//Insert ForecasterValues
-		for _, val := range bundle.ValueBundle.InfererValues {
-			_, err := dbPool.Exec(context.Background(), `
-				INSERT INTO bundle_values (
-					bundle_id,
-					reputer_value_type,
-					worker,
-					value
-				) VALUES ($1, $2, $3, $4)`,
-				bundleId, "ForecasterValues", val.Worker, val.Value,
-			)
-			if err != nil {
-				log.Error().Err(err).Msg("Failed to insert ForecasterValues bundle_values")
-				return err
-			}
-		}
-		// Insert OneOutInfererValues
-		for _, val := range bundle.ValueBundle.OneOutInfererValues {
-			_, err := dbPool.Exec(context.Background(), `
-				INSERT INTO bundle_values (
-					bundle_id,
-					reputer_value_type,
-					worker,
-					value
-				) VALUES ($1, $2, $3, $4)`,
-				bundleId, "OneOutInfererValues", val.Worker, val.Value,
-			)
-			if err != nil {
-				log.Error().Err(err).Msg("Failed to insert OneOutInfererValues bundle_values")
-				return err
-			}
-		}
-		// Insert OneInForecasterValues
-		for _, val := range bundle.ValueBundle.OneInForecasterValues {
-			_, err := dbPool.Exec(context.Background(), `
-				INSERT INTO bundle_values (
-					bundle_id,
-					reputer_value_type,
-					worker,
-					value
-				) VALUES ($1, $2, $3, $4)`,
-				bundleId, "OneInForecasterValues", val.Worker, val.Value,
-			)
-			if err != nil {
-				log.Error().Err(err).Msg("Failed to insert OneInForecasterValues bundle_values")
-				return err
-			}
-		}
-		// Insert OneOutForecasterValues
-		for _, val := range bundle.ValueBundle.OneOutForecasterValues {
-			_, err := dbPool.Exec(context.Background(), `
-				INSERT INTO bundle_values (
-					bundle_id,
-					reputer_value_type,
-					worker,
-					value
-				) VALUES ($1, $2, $3, $4)`,
-				bundleId, "OneOutForecasterValues", val.Worker, val.Value,
-			)
-			if err != nil {
-				log.Error().Err(err).Msg("Failed to insert OneOutForecasterValues bundle_values")
-				return err
-			}
+		err = insertValueBundle(bundleId, bundle.ValueBundle, TB_BUNDLE_VALUES)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -285,7 +209,7 @@ func insertBulkWorkerPayload(blockHeight uint64, messageId uint64, inf types.Msg
 		log.Info().Msgf("Inserting inference nonce: %d, value: %s, topic_id: %d", nonce_block_height, bundle.InferenceForecastsBundle.Inference.Value, topic_id)
 		if _, err := strconv.ParseFloat(bundle.InferenceForecastsBundle.Inference.Value, 64); err == nil {
 			_, err := dbPool.Exec(context.Background(), `
-				INSERT INTO inferences (
+				INSERT INTO `+TB_INFERENCES+` (
 					message_height,
 					message_id,
 					nonce_block_height,
@@ -313,7 +237,7 @@ func insertBulkWorkerPayload(blockHeight uint64, messageId uint64, inf types.Msg
 		if len(bundle.InferenceForecastsBundle.Forecast.ForecastElements) > 0 {
 			var forecastId uint64
 			err := dbPool.QueryRow(context.Background(), `
-				INSERT INTO forecasts (
+				INSERT INTO `+TB_FORECASTS+` (
 					message_height,
 					message_id,
 					nonce_block_height,
@@ -333,7 +257,7 @@ func insertBulkWorkerPayload(blockHeight uint64, messageId uint64, inf types.Msg
 			log.Info().Msgf("forecast_id: %d", forecastId)
 			for _, forecast := range bundle.InferenceForecastsBundle.Forecast.ForecastElements {
 				_, err := dbPool.Exec(context.Background(), `
-					INSERT INTO forecast_values (
+					INSERT INTO `+TB_FORECAST_VALUES+` (
 						forecast_id,
 						inferer,
 						value
@@ -402,7 +326,7 @@ func insertMsgRegister(height uint64, messageId uint64, msg types.MsgRegister) e
 	}
 
 	_, err = dbPool.Exec(context.Background(), `
-		INSERT INTO worker_registrations (
+		INSERT INTO `+TB_WORKER_REGISTRATIONS+` (
 			message_height,
 			message_id,
 			sender,
@@ -422,7 +346,7 @@ func insertMsgRegister(height uint64, messageId uint64, msg types.MsgRegister) e
 
 func insertAddress(t string, address sql.NullString, pub_key sql.NullString, memo string) error {
 	_, err := dbPool.Exec(context.Background(), `
-		INSERT INTO addresses (
+		INSERT INTO `+TB_ADDRESSES+` (
 			pub_key,
 			type,
 			memo,
@@ -457,7 +381,7 @@ func insertMsgFundTopic(height uint64, messageId uint64, msg types.MsgFundTopic)
 	}
 
 	_, err = dbPool.Exec(context.Background(), `
-		INSERT INTO transfers (
+		INSERT INTO `+TB_TRANSFERS+` (
 			message_height,
 			message_id,
 			from_address,
@@ -486,7 +410,7 @@ func insertMsgSend(height uint64, messageId uint64, msg types.MsgSend) error {
 		return err
 	}
 	_, err = dbPool.Exec(context.Background(), `
-		INSERT INTO transfers (
+		INSERT INTO `+TB_TRANSFERS+` (
 			message_height,
 			message_id,
 			from_address,

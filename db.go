@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/allora-network/allora-cosmos-pump/types"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
@@ -46,6 +47,27 @@ type DBBlockInfo struct {
 	EvidenceHash               string
 	ProposerAddress            string
 }
+
+const (
+	TB_EVENTS                    = "events"
+	TB_MESSAGES                  = "messages"
+	TB_BLOCK_INFO                = "block_info"
+	TB_CONSENSUS_PARAMS          = "consensus_params"
+	TB_TOPICS                    = "topics"
+	TB_ADDRESSES                 = "addresses"
+	TB_WORKER_REGISTRATIONS      = "worker_registrations"
+	TB_TRANSFERS                 = "transfers"
+	TB_INFERENCES                = "inferences"
+	TB_FORECASTS                 = "forecasts"
+	TB_FORECAST_VALUES           = "forecast_values"
+	TB_REPUTER_PAYLOAD           = "reputer_payload"
+	TB_REPUTER_BUNDLES           = "reputer_bundles"
+	TB_BUNDLE_VALUES             = "bundle_values"
+	TB_REWARDS                   = "rewards"
+	TB_SCORES                    = "scores"
+	TB_NETWORKLOSSES             = "networklosses"
+	TB_NETWORKLOSS_BUNDLE_VALUES = "networkloss_bundle_values"
+)
 
 var dbPool *pgxpool.Pool //*pgx.Conn
 
@@ -88,7 +110,7 @@ func executeSQL(sqlStatement string) {
 
 func createBlockInfoTableSQL() string {
 	return `
-	CREATE TABLE IF NOT EXISTS block_info (
+	CREATE TABLE IF NOT EXISTS ` + TB_BLOCK_INFO + ` (
 		block_hash VARCHAR(255),
 		block_total_parts INT,
 		block_part_set_header_hash VARCHAR(255),
@@ -113,7 +135,7 @@ func createBlockInfoTableSQL() string {
 
 func createConsensusParamsTableSQL() string {
 	return `
-	CREATE TABLE IF NOT EXISTS consensus_params (
+	CREATE TABLE IF NOT EXISTS ` + TB_CONSENSUS_PARAMS + ` (
 		id SERIAL PRIMARY KEY,
 		max_bytes VARCHAR(255),
 		max_gas VARCHAR(255),
@@ -126,7 +148,7 @@ func createConsensusParamsTableSQL() string {
 
 func createMessagesTablesSQL() string {
 	return `
-	CREATE TABLE IF NOT EXISTS messages (
+	CREATE TABLE IF NOT EXISTS ` + TB_MESSAGES + ` (
 		id SERIAL PRIMARY KEY,
 		height BIGINT,
 		type VARCHAR(255),
@@ -135,7 +157,7 @@ func createMessagesTablesSQL() string {
 		CONSTRAINT "messages_height_data" UNIQUE ("height", "data")
 	);
 
-	CREATE TABLE IF NOT EXISTS topics (
+	CREATE TABLE IF NOT EXISTS ` + TB_TOPICS + ` (
 		id INT PRIMARY KEY,
 		creator VARCHAR(255),
 		metadata VARCHAR(255),
@@ -157,7 +179,7 @@ func createMessagesTablesSQL() string {
 		message_id INT
 	);
 
-	CREATE TABLE IF NOT EXISTS addresses (
+	CREATE TABLE IF NOT EXISTS ` + TB_ADDRESSES + ` (
 		id SERIAL PRIMARY KEY,
 		pub_key VARCHAR(255) NULL DEFAULT null,
 		type VARCHAR(255) NULL DEFAULT null,
@@ -165,7 +187,7 @@ func createMessagesTablesSQL() string {
 		address VARCHAR(255) NULL DEFAULT null
 	);
 
-	CREATE TABLE IF NOT EXISTS worker_registrations (
+	CREATE TABLE IF NOT EXISTS ` + TB_WORKER_REGISTRATIONS + ` (
 		message_height INT,
 		message_id INT,
 		topic_id INT,
@@ -175,7 +197,7 @@ func createMessagesTablesSQL() string {
 		is_reputer BOOLEAN
 	);
 
-	CREATE TABLE IF NOT EXISTS transfers (
+	CREATE TABLE IF NOT EXISTS ` + TB_TRANSFERS + ` (
 		id SERIAL PRIMARY KEY,
 		message_height INT,
 		message_id INT,
@@ -186,7 +208,7 @@ func createMessagesTablesSQL() string {
 		denom VARCHAR(255)
 	);
 
-	CREATE TABLE IF NOT EXISTS inferences (
+	CREATE TABLE IF NOT EXISTS ` + TB_INFERENCES + ` (
 		id SERIAL PRIMARY KEY,
 		message_height INT,
 		message_id INT,
@@ -199,7 +221,7 @@ func createMessagesTablesSQL() string {
 		proof TEXT
 	);
 
-	CREATE TABLE IF NOT EXISTS forecasts (
+	CREATE TABLE IF NOT EXISTS ` + TB_FORECASTS + ` (
 		id SERIAL PRIMARY KEY,
 		message_height INT,
 		message_id INT,
@@ -210,13 +232,13 @@ func createMessagesTablesSQL() string {
 		extra_data VARCHAR(255)
 	);
 
-	CREATE TABLE IF NOT EXISTS forecast_values (
+	CREATE TABLE IF NOT EXISTS ` + TB_FORECAST_VALUES + ` (
 		forecast_id INT,
 		value VARCHAR(255),
 		inferer VARCHAR(255)
 	);
 
-	CREATE TABLE IF NOT EXISTS reputer_payload (
+	CREATE TABLE IF NOT EXISTS ` + TB_REPUTER_PAYLOAD + ` (
 		id SERIAL PRIMARY KEY,
 		message_height INT,
 		message_id INT,
@@ -226,7 +248,7 @@ func createMessagesTablesSQL() string {
 		topic_id INT
 	);
 
-	CREATE TABLE IF NOT EXISTS reputer_bundles (
+	CREATE TABLE IF NOT EXISTS ` + TB_REPUTER_BUNDLES + ` (
 		id SERIAL PRIMARY KEY,
 		reputer_payload_id INT,
 		pubkey VARCHAR(255),
@@ -252,7 +274,7 @@ func createMessagesTablesSQL() string {
 		WHEN duplicate_object THEN null;
 	END $$;
 
-	CREATE TABLE IF NOT EXISTS bundle_values (
+	CREATE TABLE IF NOT EXISTS ` + TB_BUNDLE_VALUES + ` (
 		bundle_id INT,
 		reputer_value_type reputerValueType,
 		value VARCHAR(255),
@@ -296,7 +318,7 @@ func createMessagesTablesSQL() string {
 
 func createEventsTablesSQL() string {
 	return `
-	CREATE TABLE IF NOT EXISTS events (
+	CREATE TABLE IF NOT EXISTS ` + TB_EVENTS + ` (
 		id SERIAL PRIMARY KEY,
 		height_tx BIGINT,
 		height BIGINT,
@@ -307,7 +329,7 @@ func createEventsTablesSQL() string {
 	);
 
 
-	CREATE TABLE IF NOT EXISTS scores (
+	CREATE TABLE IF NOT EXISTS ` + TB_SCORES + ` (
 		id SERIAL PRIMARY KEY,
 		height_tx BIGINT,
 		height BIGINT,
@@ -318,7 +340,7 @@ func createEventsTablesSQL() string {
 		CONSTRAINT unique_score_entry UNIQUE (height, topic_id, type, address)
 	);
 
-	CREATE TABLE IF NOT EXISTS rewards (
+	CREATE TABLE IF NOT EXISTS ` + TB_REWARDS + ` (
 		id SERIAL PRIMARY KEY,
 		height_tx BIGINT,
 		height BIGINT,
@@ -328,12 +350,41 @@ func createEventsTablesSQL() string {
 		value NUMERIC(72,18),
 		CONSTRAINT unique_reward_entry UNIQUE (height, topic_id, type, address)
 	);
+
+	CREATE TABLE IF NOT EXISTS ` + TB_NETWORKLOSSES + ` (
+		id SERIAL PRIMARY KEY,
+		height_tx BIGINT,
+		height BIGINT,
+		topic_id INT,
+		naive_value VARCHAR(255),
+		combined_value VARCHAR(255),
+		CONSTRAINT unique_networkloss_entry UNIQUE (height, topic_id)
+	);
+
+	DO $$ BEGIN
+		CREATE TYPE networklossBundleValueType AS ENUM(
+			'InfererValues',
+			'ForecasterValues',
+			'OneOutInfererValues',
+			'OneInForecasterValues',
+			'OneOutForecasterValues'
+		);
+	EXCEPTION
+		WHEN duplicate_object THEN null;
+	END $$;
+	
+	CREATE TABLE IF NOT EXISTS ` + TB_NETWORKLOSS_BUNDLE_VALUES + ` (
+		bundle_id INT,
+		networkloss_value_type networklossBundleValueType,
+		value VARCHAR(255),
+		worker VARCHAR(255)
+	);
 	`
 }
 
 func insertBlockInfo(blockInfo DBBlockInfo) error {
 	_, err := dbPool.Exec(context.Background(), `
-		INSERT INTO block_info (
+		INSERT INTO `+TB_BLOCK_INFO+` (
 			block_hash,
 			block_total_parts,
 			block_part_set_header_hash,
@@ -378,7 +429,7 @@ func insertMessage(height uint64, mtype string, sender string, data string) (uin
 	// Write Topic to the database
 	var id uint64
 	err := dbPool.QueryRow(context.Background(), `
-		INSERT INTO messages (
+		INSERT INTO `+TB_MESSAGES+` (
 			height,
 			type,
 			sender,
@@ -398,7 +449,7 @@ func insertMessage(height uint64, mtype string, sender string, data string) (uin
 
 func insertConsensusParams(params DBConsensusParams) error {
 	_, err := dbPool.Exec(context.Background(), `
-        INSERT INTO consensus_params (
+        INSERT INTO `+TB_CONSENSUS_PARAMS+` (
             max_bytes,
             max_gas,
             max_age_duration,
@@ -445,7 +496,7 @@ func insertEvents(events []EventRecord) error {
 			return err
 		}
 		_, err = dbPool.Exec(context.Background(), `
-			INSERT INTO events (height, type, sender, data) VALUES ($1, $2, $3, $4) 
+			INSERT INTO `+TB_EVENTS+` (height, type, sender, data) VALUES ($1, $2, $3, $4) 
 			ON CONFLICT (height, data) DO NOTHING`,
 			event.Height, event.Type, event.Sender, data)
 		if err != nil {
@@ -458,6 +509,8 @@ func insertEvents(events []EventRecord) error {
 			err = insertScore(event)
 		case "emissions.v1.EventRewardsSettled":
 			err = insertReward(event)
+		case "emissions.v1.EventNetworkLossSet":
+			err = insertNetworkLoss(event)
 		default:
 			log.Info().Str("Event type", event.Type).Msg("skipping event type ")
 			continue
@@ -519,7 +572,7 @@ func insertScore(event EventRecord) error {
 
 	for i := range addresses {
 		_, err = dbPool.Exec(context.Background(), `
-			INSERT INTO scores (height_tx, height, topic_id, type, address, value) VALUES ($1, $2, $3, $4, $5, $6) 
+			INSERT INTO `+TB_SCORES+` (height_tx, height, topic_id, type, address, value) VALUES ($1, $2, $3, $4, $5, $6) 
 			ON CONFLICT (height, topic_id, type, address) DO NOTHING`,
 			event.Height, block_height, topicID, actorType, addresses[i], scores[i].Text('f', -1))
 		if err != nil {
@@ -578,11 +631,147 @@ func insertReward(event EventRecord) error {
 
 	for i := range addresses {
 		_, err = dbPool.Exec(context.Background(),
-			`INSERT INTO rewards (height_tx, height, topic_id, type, address, value) VALUES ($1, $2, $3, $4, $5, $6) 
+			`INSERT INTO `+TB_REWARDS+` (height_tx, height, topic_id, type, address, value) VALUES ($1, $2, $3, $4, $5, $6) 
 			ON CONFLICT (height, topic_id, type, address) DO NOTHING`,
 			event.Height, block_height, topicID, rewardType, addresses[i], rewards[i].Text('f', -1))
 		if err != nil {
 			return fmt.Errorf("reward insert failed: %v", err)
+		}
+	}
+	return nil
+}
+
+func insertNetworkLoss(event EventRecord) error {
+	log.Info().Interface("Event network loss", event).Msg("inserting event network loss ")
+	var attributes []Attribute
+	err := json.Unmarshal(event.Data, &attributes)
+	if err != nil {
+		return err
+	}
+
+	var topicID int
+	var block_height int
+	var valueBundle types.MsgValueBundle
+
+	for _, attr := range attributes {
+		cleanedValue := strings.Trim(attr.Value, "\"")
+		switch attr.Key {
+		case "topic_id":
+			topicID, err = strconv.Atoi(cleanedValue)
+			if err != nil {
+				return err
+			}
+		case "block_height":
+			block_height, err = strconv.Atoi(cleanedValue)
+			if err != nil {
+				return err
+			}
+		case "value_bundle":
+			err = json.Unmarshal([]byte(cleanedValue), &valueBundle)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	var bundleId uint64
+	err = dbPool.QueryRow(context.Background(), `
+			INSERT INTO `+TB_NETWORKLOSSES+` (height_tx, height, topic_id, naive_value, combined_value) VALUES ($1, $2, $3, $4, %5) 
+			ON CONFLICT (event.Height, height, topic_id) DO NOTHING`,
+		event.Height, block_height, topicID, valueBundle.NaiveValue, valueBundle.CombinedValue).Scan(&bundleId)
+	if err != nil {
+		return fmt.Errorf("network loss event insert failed: %v", err)
+	}
+
+	log.Info().Msgf("Inserting NetworkLoss bundle: %d, %v", bundleId, valueBundle)
+	insertValueBundle(bundleId, valueBundle, TB_NETWORKLOSS_BUNDLE_VALUES)
+	return nil
+}
+
+func insertValueBundle(
+	bundleId uint64,
+	valueBundle types.MsgValueBundle,
+	tableName string,
+) error {
+
+	//Insert InfererValues
+	for _, val := range valueBundle.InfererValues {
+		_, err := dbPool.Exec(context.Background(), `
+				INSERT INTO `+tableName+` (
+					bundle_id,
+					reputer_value_type,
+					worker,
+					value
+				) VALUES ($1, $2, $3, $4)`,
+			bundleId, "InfererValues", val.Worker, val.Value,
+		)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to insert InfererValues bundle_values")
+			return err
+		}
+	}
+	//Insert ForecasterValues
+	for _, val := range valueBundle.InfererValues {
+		_, err := dbPool.Exec(context.Background(), `
+				INSERT INTO `+tableName+` (
+					bundle_id,
+					reputer_value_type,
+					worker,
+					value
+				) VALUES ($1, $2, $3, $4)`,
+			bundleId, "ForecasterValues", val.Worker, val.Value,
+		)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to insert ForecasterValues bundle_values")
+			return err
+		}
+	}
+	// Insert OneOutInfererValues
+	for _, val := range valueBundle.OneOutInfererValues {
+		_, err := dbPool.Exec(context.Background(), `
+				INSERT INTO `+tableName+` (
+					bundle_id,
+					reputer_value_type,
+					worker,
+					value
+				) VALUES ($1, $2, $3, $4)`,
+			bundleId, "OneOutInfererValues", val.Worker, val.Value,
+		)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to insert OneOutInfererValues bundle_values")
+			return err
+		}
+	}
+	// Insert OneInForecasterValues
+	for _, val := range valueBundle.OneInForecasterValues {
+		_, err := dbPool.Exec(context.Background(), `
+				INSERT INTO `+tableName+` (
+					bundle_id,
+					reputer_value_type,
+					worker,
+					value
+				) VALUES ($1, $2, $3, $4)`,
+			bundleId, "OneInForecasterValues", val.Worker, val.Value,
+		)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to insert OneInForecasterValues bundle_values")
+			return err
+		}
+	}
+	// Insert OneOutForecasterValues
+	for _, val := range valueBundle.OneOutForecasterValues {
+		_, err := dbPool.Exec(context.Background(), `
+				INSERT INTO `+tableName+` (
+					bundle_id,
+					reputer_value_type,
+					worker,
+					value
+				) VALUES ($1, $2, $3, $4)`,
+			bundleId, "OneOutForecasterValues", val.Worker, val.Value,
+		)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to insert OneOutForecasterValues bundle_values")
+			return err
 		}
 	}
 	return nil

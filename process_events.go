@@ -16,6 +16,8 @@ const (
 	RewardEvent EventType = "reward"
 	// ScoreEvent represents a score event
 	ScoreEvent EventType = "score"
+	// NetworkLossEvent represents a network loss event
+	NetworkLossEvent EventType = "networkloss"
 	// NoneEvent represents an event that doesn't need processing
 	NoneEvent EventType = "none"
 )
@@ -28,6 +30,7 @@ type EventProcessing struct {
 var event_whitelist = map[string]EventProcessing{
 	"emissions.v1.EventScoresSet":      {Type: ScoreEvent},
 	"emissions.v1.EventRewardsSettled": {Type: RewardEvent},
+	"emissions.v1.EventNetworkLossSet": {Type: NetworkLossEvent},
 }
 
 type BlockResult struct {
