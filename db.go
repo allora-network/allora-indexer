@@ -358,7 +358,7 @@ func createEventsTablesSQL() string {
 		topic_id INT,
 		naive_value VARCHAR(255),
 		combined_value VARCHAR(255),
-		CONSTRAINT unique_networkloss_entry UNIQUE (height, topic_id)
+		CONSTRAINT unique_networkloss_entry UNIQUE (height_tx, height, topic_id)
 	);
 
 	DO $$ BEGIN
@@ -676,9 +676,10 @@ func insertNetworkLoss(event EventRecord) error {
 
 	var bundleId uint64
 	err = dbPool.QueryRow(context.Background(), `
-			INSERT INTO `+TB_NETWORKLOSSES+` (height_tx, height, topic_id, naive_value, combined_value) VALUES ($1, $2, $3, $4, %5) 
-			ON CONFLICT (event.Height, height, topic_id) DO NOTHING`,
+			INSERT INTO `+TB_NETWORKLOSSES+` (height_tx, height, topic_id, naive_value, combined_value) VALUES ($1, $2, $3, $4, $5)
+			ON CONFLICT (height_tx, height, topic_id) DO NOTHING returning id`,
 		event.Height, block_height, topicID, valueBundle.NaiveValue, valueBundle.CombinedValue).Scan(&bundleId)
+
 	if err != nil {
 		return fmt.Errorf("network loss event insert failed: %v", err)
 	}
