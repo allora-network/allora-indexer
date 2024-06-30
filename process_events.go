@@ -35,11 +35,22 @@ var event_whitelist = map[string]EventProcessing{
 
 type BlockResult struct {
 	Result struct {
-		Height              string  `json:"height"`
-		FinalizeBlockEvents []Event `json:"finalize_block_events"`
+		Height              string    `json:"height"`
+		FinalizeBlockEvents []Event   `json:"finalize_block_events"`
+		TxsBlockEvents      []TxEvent `json:"txs_results"`
 	} `json:"result"`
 }
 
+type TxEvent struct {
+	Code       int     `json:"code"`
+	Data       string  `json:"data"`
+	Log        string  `json:"log"`
+	Info       string  `json:"info"`
+	Gas_wanted string  `json:"gas_wanted"`
+	Gas_used   string  `json:"gas_used"`
+	Events     []Event `json:"events"`
+	Codespace  string  `json:"codespace"`
+}
 type Event struct {
 	Type       string      `json:"type"`
 	Attributes []Attribute `json:"attributes"`
@@ -78,11 +89,18 @@ func FetchEventBlockData(config ClientConfig, height uint64) (*BlockResult, erro
 }
 
 // FilterEvents filters events based on a whitelist on its type
-func FilterEvents(events []Event, whitelist map[string]EventProcessing) []Event {
+func FilterEvents(events *BlockResult, whitelist map[string]EventProcessing) []Event {
 	var filteredEvents []Event
-	for _, event := range events {
+	for _, event := range events.Result.FinalizeBlockEvents {
 		if processing, ok := whitelist[event.Type]; ok && processing.Type != NoneEvent {
 			filteredEvents = append(filteredEvents, event)
+		}
+	}
+	for _, blockevent := range events.Result.TxsBlockEvents {
+		for _, event := range blockevent.Events {
+			if processing, ok := whitelist[event.Type]; ok && processing.Type != NoneEvent {
+				filteredEvents = append(filteredEvents, event)
+			}
 		}
 	}
 	return filteredEvents
@@ -94,7 +112,7 @@ func processBlock(config ClientConfig, height uint64) error {
 	if err != nil {
 		return fmt.Errorf("failed to fetch block data: %w", err)
 	}
-	filteredEvents := FilterEvents(blockData.Result.FinalizeBlockEvents, event_whitelist)
+	filteredEvents := FilterEvents(blockData, event_whitelist)
 
 	var eventRecords []EventRecord
 	for _, event := range filteredEvents {
