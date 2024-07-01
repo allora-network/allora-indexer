@@ -7,7 +7,7 @@ import (
 	"net/http"
 )
 
-const eventsRPCQuery = "block_results?height="
+const eventsRPCQuery = "/block_results?height="
 
 type EventType string
 
