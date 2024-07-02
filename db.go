@@ -375,7 +375,7 @@ func createEventsTablesSQL() string {
 	
 	CREATE TABLE IF NOT EXISTS ` + TB_NETWORKLOSS_BUNDLE_VALUES + ` (
 		bundle_id INT,
-		networkloss_value_type networklossBundleValueType,
+		reputer_value_type networklossBundleValueType,
 		value VARCHAR(255),
 		worker VARCHAR(255)
 	);
