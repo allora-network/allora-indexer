@@ -117,7 +117,7 @@ func main() {
 	pflag.StringVar(&cliAppFlag, "cliApp", "allorad", "CLI app to execute commands")
 	pflag.StringVar(&connectionFlag, "conn", "postgres://pump:pump@localhost:5432/pump", "Database connection string")
 	pflag.StringSliceVar(&blocks, "blocks", nil, "A list of blocks to process.")
-	pflag.BoolVar(&exitWhenCaughtUp, "exitWhenCaughtUp", true, "Exit when last block is processed. If false will keep processing new blocks.")
+	pflag.BoolVar(&exitWhenCaughtUp, "exitWhenCaughtUp", false, "Exit when last block is processed. If false will keep processing new blocks.")
 	pflag.Parse()
 
 	// define the commands to execute payloads
