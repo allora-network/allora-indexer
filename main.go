@@ -120,6 +120,15 @@ func main() {
 	pflag.BoolVar(&exitWhenCaughtUp, "exitWhenCaughtUp", false, "Exit when last block is processed. If false will keep processing new blocks.")
 	pflag.Parse()
 
+	log.Info().
+		Uint("workersNum", workersNum).
+		Str("node", nodeFlag).
+		Str("cliApp", cliAppFlag).
+		Str("conn", connectionFlag).
+		Strs("blocks", blocks).
+		Bool("exitWhenCaughtUp", exitWhenCaughtUp).
+		Msg("pump started")
+
 	// define the commands to execute payloads
 	config = ClientConfig{
 		Node:   nodeFlag,
