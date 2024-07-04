@@ -34,7 +34,7 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
         curl -L https://github.com/allora-network/allora-chain/releases/download/v0.2.11/allorad_linux_amd64 -o /usr/local/bin/allorad; \
     fi
 
-
+RUN chmod -R 777 /usr/local/bin/allorad
 COPY --from=gobuilder allora-cosmos-pump /usr/local/bin/allora-cosmos-pump
 # EXPOSE 8080
 ENTRYPOINT ["allora-cosmos-pump"]
