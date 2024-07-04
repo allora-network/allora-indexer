@@ -27,12 +27,14 @@ RUN apt update && \
 
 WORKDIR /
 # Detect the architecture and download the appropriate binary
-# RUN curl -L https://github.com/allora-network/allora-chain/releases/download/untagged-897b45d53401bc762977/allorad_linux_amd64 -o /usr/local/bin/allorad; \
-#     chmod a+x /usr/local/bin/allorad
-# 
-RUN curl -L -H "Accept: application/octet-stream" https://api.github.com/repos/allora-network/allora-chain/releases/assets/172934469 -o /usr/local/bin/allorad && \
-    chmod a+x /usr/local/bin/allorad
+ARG TARGETARCH
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
+        curl -L https://github.com/allora-network/allora-chain/releases/download/v0.2.11/allorad_linux_arm64 -o /usr/local/bin/allorad; \
+    else \
+        curl -L https://github.com/allora-network/allora-chain/releases/download/v0.2.11/allorad_linux_amd64 -o /usr/local/bin/allorad; \
+    fi
 
+RUN chmod -R 777 /usr/local/bin/allorad
 COPY --from=gobuilder allora-cosmos-pump /usr/local/bin/allora-cosmos-pump
 # EXPOSE 8080
 ENTRYPOINT ["allora-cosmos-pump"]
