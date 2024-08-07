@@ -21,16 +21,15 @@ type MsgCreateNewTopic struct {
 	AllowNegative    bool   `json:"allow_negative"`
 }
 
-type MsgInsertBulkWorkerPayload struct {
-	Type  string `json:"@type"`
-	Nonce struct {
-		BlockHeight string `json:"block_height"`
-	} `json:"nonce"`
-	Sender            string `json:"sender"`
-	TopicID           string `json:"topic_id"`
-	WorkerDataBundles []struct {
-		Pubkey                   string `json:"pubkey"`
-		Worker                   string `json:"worker"`
+type MsgInsertWorkerPayload struct {
+	Type             string `json:"@type"`
+	Sender           string `json:"sender"`
+	WorkerDataBundle struct {
+		Worker string `json:"worker"`
+		Nonce  struct {
+			BlockHeight string `json:"block_height"`
+		} `json:"nonce"`
+		TopicID                  string `json:"topic_id"`
 		InferenceForecastsBundle struct {
 			Forecast struct {
 				TopicID          string      `json:"topic_id"`
@@ -40,19 +39,20 @@ type MsgInsertBulkWorkerPayload struct {
 				ForecastElements []struct {
 					Inferer string `json:"inferer"`
 					Value   string `json:"value"`
-				} `json:"forecast_elements"`
+				} `json:"forecast_elements,omitempty"`
 			} `json:"forecast,omitempty"`
 			Inference struct {
-				Proof       string      `json:"proof"`
 				Value       string      `json:"value"`
 				Inferer     string      `json:"inferer"`
 				TopicID     string      `json:"topic_id"`
 				ExtraData   interface{} `json:"extra_data,omitempty"`
 				BlockHeight string      `json:"block_height"`
+				Proof       string      `json:"proof"`
 			} `json:"inference,omitempty"`
 		} `json:"inference_forecasts_bundle"`
 		InferencesForecastsBundleSignature string `json:"inferences_forecasts_bundle_signature"`
-	} `json:"worker_data_bundles"`
+		PubKey                             string `json:"pubkey"`
+	} `json:"worker_data_bundle"`
 }
 
 type MsgValueBundle struct {
@@ -70,9 +70,6 @@ type MsgValueBundle struct {
 		Worker string `json:"worker"`
 	} `json:"forecaster_values"`
 	ReputerRequestNonce struct {
-		WorkerNonce struct {
-			BlockHeight string `json:"block_height"`
-		} `json:"worker_nonce"`
 		ReputerNonce struct {
 			BlockHeight string `json:"block_height"`
 		} `json:"reputer_nonce"`
@@ -89,24 +86,23 @@ type MsgValueBundle struct {
 		Value  string `json:"value"`
 		Worker string `json:"worker"`
 	} `json:"one_out_forecaster_values"`
+	OneOutInfererForecasterValues []struct {
+		Forecaster          string `json:"forecaster"`
+		OneOutInfererValues []struct {
+			Value  string `json:"value"`
+			Worker string `json:"worker"`
+		} `json:"one_out_inferer_values"`
+	} `json:"one_out_inferer_forecaster_values"`
 }
-type MsgInsertBulkReputerPayload struct {
-	Type                string `json:"@type"`
-	Sender              string `json:"sender"`
-	TopicID             string `json:"topic_id"`
-	ReputerRequestNonce struct {
-		WorkerNonce struct {
-			BlockHeight string `json:"block_height"`
-		} `json:"worker_nonce"`
-		ReputerNonce struct {
-			BlockHeight string `json:"block_height"`
-		} `json:"reputer_nonce"`
-	} `json:"reputer_request_nonce"`
-	ReputerValueBundles []struct {
+
+type MsgInsertReputerPayload struct {
+	Type               string `json:"@type"`
+	Sender             string `json:"sender"`
+	ReputerValueBundle struct {
 		Pubkey      string         `json:"pubkey"`
 		Signature   string         `json:"signature"`
 		ValueBundle MsgValueBundle `json:"value_bundle"`
-	} `json:"reputer_value_bundles"`
+	} `json:"reputer_value_bundle"`
 }
 
 type MsgSend struct {

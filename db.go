@@ -243,7 +243,6 @@ func createMessagesTablesSQL() string {
 		message_height INT,
 		message_id INT,
 		sender VARCHAR(255),
-		worker_nonce_block_height INT,
 		reputer_nonce_block_height INT,
 		topic_id INT
 	);
@@ -505,11 +504,11 @@ func insertEvents(events []EventRecord) error {
 
 		// Additional handling for scores and rewards
 		switch event.Type {
-		case "emissions.v1.EventScoresSet":
+		case "emissions.v2.EventScoresSet":
 			err = insertScore(event)
-		case "emissions.v1.EventRewardsSettled":
+		case "emissions.v2.EventRewardsSettled":
 			err = insertReward(event)
-		case "emissions.v1.EventNetworkLossSet":
+		case "emissions.v2.EventNetworkLossSet":
 			err = insertNetworkLoss(event)
 		default:
 			log.Info().Str("Event type", event.Type).Msg("skipping event type ")
@@ -772,6 +771,31 @@ func insertValueBundle(
 		)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to insert OneOutForecasterValues bundle_values")
+			return err
+		}
+	}
+	// Insert OneOutInfererForecasterValues
+	for _, val := range valueBundle.OneOutInfererForecasterValues {
+		oneOutInfererStrValues := ""
+		if len(val.OneOutInfererValues) != 0 {
+			mjson, err := json.Marshal(val.OneOutInfererValues)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to insert OneOutInfererForecasterValues bundle_values")
+				return err
+			}
+			oneOutInfererStrValues = string(mjson)
+		}
+		_, err := dbPool.Exec(context.Background(), `
+				INSERT INTO `+tableName+` (
+					bundle_id,
+					reputer_value_type,
+					worker,
+					value
+				) VALUES ($1, $2, $3, $4)`,
+			bundleId, "OneOutInfererForecasterValues", val.Forecaster, oneOutInfererStrValues,
+		)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to insert OneOutInfererForecasterValues bundle_values")
 			return err
 		}
 	}

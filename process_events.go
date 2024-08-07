@@ -28,9 +28,9 @@ type EventProcessing struct {
 }
 
 var event_whitelist = map[string]EventProcessing{
-	"emissions.v1.EventScoresSet":      {Type: ScoreEvent},
-	"emissions.v1.EventRewardsSettled": {Type: RewardEvent},
-	"emissions.v1.EventNetworkLossSet": {Type: NetworkLossEvent},
+	"emissions.v2.EventScoresSet":      {Type: ScoreEvent},
+	"emissions.v2.EventRewardsSettled": {Type: RewardEvent},
+	"emissions.v2.EventNetworkLossSet": {Type: NetworkLossEvent},
 }
 
 type BlockResult struct {
