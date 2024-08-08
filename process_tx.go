@@ -5,11 +5,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/allora-network/allora-cosmos-pump/types"
 	"strconv"
 	"sync"
 	"time"
 
-	"github.com/allora-network/allora-cosmos-pump/types"
 	"github.com/rs/zerolog/log"
 )
 
@@ -20,7 +20,8 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 	defer wg.Done()
 
 	// Decode the transaction using the decodeTx function
-	txMessage, err := ExecuteCommandByKey[types.Tx](config, "decodeTx", txData)
+	//txMessage, err := ExecuteCommandByKey[types.Tx](config, "decodeTx", txData)
+	txMessage, err := DecodeTx(config, txData)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to execute command")
 	}
@@ -51,7 +52,7 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 		}
 
 		switch mtype {
-		case "/emissions.v2.MsgCreateNewTopic":
+		case "/emissions.v1.MsgCreateNewTopic", "/emissions.v2.MsgCreateNewTopic":
 			// Process MsgProcessInferences
 			log.Info().Msg("Processing MsgCreateNewTopic...")
 			// Add your processing logic here
@@ -62,7 +63,7 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 				log.Error().Err(err).Msgf("Failed to insertMsgCreateNewTopic, height: %d", height)
 			}
 
-		case "/emissions.v2.MsgFundTopic", "/emissions.v2.MsgAddStake":
+		case "/emissions.v1.MsgFundTopic", "/emissions.v1.MsgAddStake", "/emissions.v2.MsgFundTopic", "/emissions.v2.MsgAddStake":
 			// Process MsgProcessInferences
 			log.Info().Msg("Processing MsgFundTopic...")
 			// Add your processing logic here
@@ -84,7 +85,7 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 				log.Error().Err(err).Msgf("Failed to insertMsgSend, height: %d", height)
 			}
 
-		case "/emissions.v2.MsgRegister":
+		case "/emissions.v1.MsgRegister", "/emissions.v2.MsgRegister":
 			// Process MsgProcessInferences
 			log.Info().Msg("Processing MsgRegister...")
 			var msgRegister types.MsgRegister
@@ -92,6 +93,16 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 			insertMsgRegister(height, messageId, msgRegister)
 			if err != nil {
 				log.Error().Err(err).Msgf("Failed to insertMsgRegister, height: %d", height)
+			}
+
+		case "/emissions.v1.MsgInsertBulkWorkerPayload":
+			// Process MsgProcessInferences
+			log.Info().Msg("Processing MsgInsertBulkWorkerPayload...")
+			var workerPayload types.MsgInsertBulkWorkerPayload
+			json.Unmarshal(mjson, &workerPayload)
+			insertBulkWorkerPayload(height, messageId, workerPayload)
+			if err != nil {
+				log.Error().Err(err).Msgf("Failed to insertBulkWorkerPayload, height: %d", height)
 			}
 		case "/emissions.v2.MsgInsertWorkerPayload":
 			// Process MsgProcessInferences
@@ -103,6 +114,15 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 				log.Error().Err(err).Msgf("Failed to insertBulkWorkerPayload, height: %d", height)
 			}
 
+		case "/emissions.v1.MsgInsertBulkReputerPayload":
+			// Process MsgInsertReputerPayload
+			log.Info().Msg("Processing MsgInsertBulkReputerPayload...")
+			var reputerPayload types.MsgInsertBulkReputerPayload
+			json.Unmarshal(mjson, &reputerPayload)
+			insertBulkReputerPayload(height, messageId, reputerPayload)
+			if err != nil {
+				log.Error().Err(err).Msgf("Failed to insertInferenceForecasts, height: %d", height)
+			}
 		case "/emissions.v2.MsgInsertReputerPayload":
 			// Process MsgInsertReputerPayload
 			log.Info().Msg("Processing MsgInsertReputerPayload...")
@@ -117,6 +137,69 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 			log.Info().Str("type", mtype).Msg("Unknown message type")
 		}
 	}
+}
+
+func insertBulkReputerPayload(blockHeight uint64, messageId uint64, msg types.MsgInsertBulkReputerPayload) error {
+
+	worker_nonce_block_height, err := strconv.Atoi(msg.ReputerRequestNonce.WorkerNonce.BlockHeight)
+	reputer_nonce_block_height, err := strconv.Atoi(msg.ReputerRequestNonce.ReputerNonce.BlockHeight)
+	var payloadId uint64
+	err = dbPool.QueryRow(context.Background(), `
+		INSERT INTO `+TB_REPUTER_PAYLOAD+` (
+			message_height,
+			message_id,
+			sender,
+			worker_nonce_block_height,
+			reputer_nonce_block_height,
+			topic_id
+		) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+		blockHeight, messageId, msg.Sender, worker_nonce_block_height,
+		reputer_nonce_block_height, msg.TopicID,
+	).Scan(&payloadId)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to insert reputer_payload")
+		return err
+	}
+
+	var bundleId uint64
+	for _, bundle := range msg.ReputerValueBundles {
+		log.Info().Msgf("Inserting bundle: %v", bundle)
+		request_worker_nonce_block_height, err := strconv.Atoi(bundle.ValueBundle.ReputerRequestNonce.WorkerNonce.BlockHeight)
+		request_reputer_nonce_block_height, err := strconv.Atoi(bundle.ValueBundle.ReputerRequestNonce.ReputerNonce.BlockHeight)
+		err = insertAddress("allora", sql.NullString{"", false}, sql.NullString{bundle.Pubkey, true}, "")
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to insert bundle.Pubkey insertAddress")
+			return err
+		}
+		err = dbPool.QueryRow(context.Background(), `
+			INSERT INTO `+TB_REPUTER_BUNDLES+` (
+				reputer_payload_id,
+				pubkey,
+				signature,
+				reputer,
+				topic_id,
+				extra_data,
+				naive_value,
+				combined_value,
+				reputer_request_worker_nonce,
+				reputer_request_reputer_nonce
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+			payloadId, sql.NullString{bundle.Pubkey, true}, bundle.Signature, bundle.ValueBundle.Reputer,
+			bundle.ValueBundle.TopicID, bundle.ValueBundle.ExtraData, bundle.ValueBundle.NaiveValue,
+			bundle.ValueBundle.CombinedValue, request_worker_nonce_block_height,
+			request_reputer_nonce_block_height,
+		).Scan(&bundleId)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to insert reputer_bundles")
+			return err
+		}
+		err = insertValueBundle(bundleId, bundle.ValueBundle, TB_BUNDLE_VALUES)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func insertReputerPayload(blockHeight uint64, messageId uint64, msg types.MsgInsertReputerPayload) error {
@@ -175,6 +258,119 @@ func insertReputerPayload(blockHeight uint64, messageId uint64, msg types.MsgIns
 	return nil
 }
 
+func insertBulkWorkerPayload(blockHeight uint64, messageId uint64, inf types.MsgInsertBulkWorkerPayload) error {
+
+	for _, bundle := range inf.WorkerDataBundles {
+
+		nonce_block_height, err := strconv.Atoi(inf.Nonce.BlockHeight)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to convert inf.Nonce.BlockHeight to int in insertInferenceForecasts")
+			return err
+		}
+		topic_id, err := strconv.Atoi(inf.TopicID)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to convert inf.TopicID to int in insertInferenceForecasts")
+			return err
+		}
+		block_height, err := strconv.Atoi(bundle.InferenceForecastsBundle.Inference.BlockHeight)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to convert bundle.InferenceForecastsBundle.Inference.BlockHeight to int in insertInferenceForecasts")
+			return err
+		}
+		waitCreation("block_info", "height", strconv.FormatUint(blockHeight, 10))
+		if err != nil {
+			log.Error().Err(err).Msg("height is still not exist in block_info blockHeight. Exiting...")
+			return err
+		}
+		err = insertWorkerDataBundle(messageId, blockHeight, block_height, topic_id, nonce_block_height, bundle)
+		if err != nil {
+			//log.Error().Err(err).Msg("height is still not exist in block_info blockHeight. Exiting...")
+			return err
+		}
+	}
+
+	return nil
+}
+
+func insertWorkerDataBundle(messageId, blockHeight uint64, block_height, topic_id, nonce_block_height int, bundle types.WorkerDataBundle) error {
+
+	inferenceTopicId, err := strconv.Atoi(bundle.InferenceForecastsBundle.Inference.TopicID)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to convert inference TopicId to int in insertMsgFundTopic")
+		return err
+	}
+	// Insert inference
+	log.Info().Msgf("Inserting inference nonce: %d, value: %s, topic_id: %d", nonce_block_height, bundle.InferenceForecastsBundle.Inference.Value, topic_id)
+	if _, err := strconv.ParseFloat(bundle.InferenceForecastsBundle.Inference.Value, 64); err == nil {
+		_, err := dbPool.Exec(context.Background(), `
+				INSERT INTO `+TB_INFERENCES+` (
+					message_height,
+					message_id,
+					nonce_block_height,
+					topic_id,
+					block_height,
+					inferer,
+					value,
+					extra_data
+				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			blockHeight, messageId, nonce_block_height, topic_id,
+			block_height, bundle.InferenceForecastsBundle.Inference.Inferer,
+			bundle.InferenceForecastsBundle.Inference.Value, bundle.InferenceForecastsBundle.Inference.ExtraData,
+		)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to insert inferences")
+			return err
+		}
+	} else {
+		log.Error().Err(err).Msg("Failed to convert inference value")
+		return err
+	}
+	// Insert Forecasts
+	if len(bundle.InferenceForecastsBundle.Forecast.ForecastElements) > 0 {
+
+		var forecastId uint64
+		err := dbPool.QueryRow(context.Background(), `
+				INSERT INTO `+TB_FORECASTS+` (
+					message_height,
+					message_id,
+					nonce_block_height,
+					topic_id,
+					block_height,
+					extra_data,
+					forecaster
+				) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+			blockHeight, messageId, nonce_block_height, topic_id,
+			bundle.InferenceForecastsBundle.Forecast.BlockHeight, bundle.InferenceForecastsBundle.Forecast.ExtraData,
+			bundle.InferenceForecastsBundle.Forecast.Forecaster,
+		).Scan(&forecastId)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to insert forecasts")
+			return err
+		}
+		log.Info().Msgf("forecast_id: %d", forecastId)
+		for _, forecast := range bundle.InferenceForecastsBundle.Forecast.ForecastElements {
+			_, err := dbPool.Exec(context.Background(), `
+					INSERT INTO `+TB_FORECAST_VALUES+` (
+						forecast_id,
+						inferer,
+						value
+					) VALUES ($1, $2, $3)`,
+				forecastId, forecast.Inferer, forecast.Value,
+			)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to insert forecast_values")
+				return err
+			}
+		}
+	}
+
+	if inferenceTopicId != topic_id {
+		log.Error().Msgf("Message TopicID not equal inference TopicID!!!!")
+	}
+
+	return nil
+}
+
 func insertWorkerPayload(blockHeight uint64, messageId uint64, inf types.MsgInsertWorkerPayload) error {
 
 	nonce_block_height, err := strconv.Atoi(inf.WorkerDataBundle.Nonce.BlockHeight)
@@ -197,73 +393,9 @@ func insertWorkerPayload(blockHeight uint64, messageId uint64, inf types.MsgInse
 		log.Error().Err(err).Msg("height is still not exist in block_info blockHeight. Exiting...")
 		return err
 	}
-	// Insert inference
-	log.Info().Msgf("Inserting inference nonce: %d, value: %s, topic_id: %d", nonce_block_height, inf.WorkerDataBundle.InferenceForecastsBundle.Inference.Value, topic_id)
-	if _, err := strconv.ParseFloat(inf.WorkerDataBundle.InferenceForecastsBundle.Inference.Value, 64); err == nil {
-		_, err := dbPool.Exec(context.Background(), `
-				INSERT INTO `+TB_INFERENCES+` (
-					message_height,
-					message_id,
-					nonce_block_height,
-					topic_id,
-					block_height,
-					inferer,
-					value,
-					extra_data
-				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-			blockHeight, messageId, nonce_block_height, topic_id,
-			block_height, inf.WorkerDataBundle.InferenceForecastsBundle.Inference.Inferer,
-			inf.WorkerDataBundle.InferenceForecastsBundle.Inference.Value, inf.WorkerDataBundle.InferenceForecastsBundle.Inference.ExtraData,
-		)
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to insert inferences")
-			return err
-		}
-	} else {
-		log.Error().Err(err).Msg("Failed to convert inference value")
+	err = insertWorkerDataBundle(messageId, blockHeight, block_height, topic_id, nonce_block_height, inf.WorkerDataBundle)
+	if err != nil {
 		return err
-	}
-	// Insert Forecasts
-	if len(inf.WorkerDataBundle.InferenceForecastsBundle.Forecast.ForecastElements) > 0 {
-
-		var forecastId uint64
-		err := dbPool.QueryRow(context.Background(), `
-				INSERT INTO `+TB_FORECASTS+` (
-					message_height,
-					message_id,
-					nonce_block_height,
-					topic_id,
-					block_height,
-					extra_data,
-					forecaster
-				) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-			blockHeight, messageId, inf.WorkerDataBundle.Nonce.BlockHeight, inf.WorkerDataBundle.TopicID,
-			inf.WorkerDataBundle.InferenceForecastsBundle.Forecast.BlockHeight, inf.WorkerDataBundle.InferenceForecastsBundle.Forecast.ExtraData,
-			inf.WorkerDataBundle.InferenceForecastsBundle.Forecast.Forecaster,
-		).Scan(&forecastId)
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to insert forecasts")
-			return err
-		}
-		log.Info().Msgf("forecast_id: %d", forecastId)
-		for _, forecast := range inf.WorkerDataBundle.InferenceForecastsBundle.Forecast.ForecastElements {
-			_, err := dbPool.Exec(context.Background(), `
-					INSERT INTO `+TB_FORECAST_VALUES+` (
-						forecast_id,
-						inferer,
-						value
-					) VALUES ($1, $2, $3)`,
-				forecastId, forecast.Inferer, forecast.Value,
-			)
-			if err != nil {
-				log.Error().Err(err).Msg("Failed to insert forecast_values")
-				return err
-			}
-		}
-	}
-
-	if inf.WorkerDataBundle.InferenceForecastsBundle.Inference.TopicID != inf.WorkerDataBundle.TopicID {
-		log.Error().Msgf("Message TopicID not equal inference TopicID!!!!")
 	}
 
 	return nil
