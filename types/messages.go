@@ -22,37 +22,49 @@ type MsgCreateNewTopic struct {
 }
 
 type MsgInsertWorkerPayload struct {
-	Type             string `json:"@type"`
-	Sender           string `json:"sender"`
-	WorkerDataBundle struct {
-		Worker string `json:"worker"`
-		Nonce  struct {
-			BlockHeight string `json:"block_height"`
-		} `json:"nonce"`
-		TopicID                  string `json:"topic_id"`
-		InferenceForecastsBundle struct {
-			Forecast struct {
-				TopicID          string      `json:"topic_id"`
-				ExtraData        interface{} `json:"extra_data,omitempty"`
-				Forecaster       string      `json:"forecaster"`
-				BlockHeight      string      `json:"block_height"`
-				ForecastElements []struct {
-					Inferer string `json:"inferer"`
-					Value   string `json:"value"`
-				} `json:"forecast_elements,omitempty"`
-			} `json:"forecast,omitempty"`
-			Inference struct {
-				Value       string      `json:"value"`
-				Inferer     string      `json:"inferer"`
-				TopicID     string      `json:"topic_id"`
-				ExtraData   interface{} `json:"extra_data,omitempty"`
-				BlockHeight string      `json:"block_height"`
-				Proof       string      `json:"proof"`
-			} `json:"inference,omitempty"`
-		} `json:"inference_forecasts_bundle"`
-		InferencesForecastsBundleSignature string `json:"inferences_forecasts_bundle_signature"`
-		PubKey                             string `json:"pubkey"`
-	} `json:"worker_data_bundle"`
+	Type             string           `json:"@type"`
+	Sender           string           `json:"sender"`
+	WorkerDataBundle WorkerDataBundle `json:"worker_data_bundle"`
+}
+
+type MsgInsertBulkWorkerPayload struct {
+	Type  string `json:"@type"`
+	Nonce struct {
+		BlockHeight string `json:"block_height"`
+	} `json:"nonce"`
+	Sender  string `json:"sender"`
+	TopicID string `json:"topic_id"`
+
+	WorkerDataBundles []WorkerDataBundle `json:"worker_data_bundles"`
+}
+type WorkerDataBundle struct {
+	Worker string `json:"worker"`
+	Nonce  struct {
+		BlockHeight string `json:"block_height"`
+	} `json:"nonce"`
+	TopicID                  string `json:"topic_id"`
+	InferenceForecastsBundle struct {
+		Forecast struct {
+			TopicID          string      `json:"topic_id"`
+			ExtraData        interface{} `json:"extra_data,omitempty"`
+			Forecaster       string      `json:"forecaster"`
+			BlockHeight      string      `json:"block_height"`
+			ForecastElements []struct {
+				Inferer string `json:"inferer"`
+				Value   string `json:"value"`
+			} `json:"forecast_elements,omitempty"`
+		} `json:"forecast,omitempty"`
+		Inference struct {
+			Value       string      `json:"value"`
+			Inferer     string      `json:"inferer"`
+			TopicID     string      `json:"topic_id"`
+			ExtraData   interface{} `json:"extra_data,omitempty"`
+			BlockHeight string      `json:"block_height"`
+			Proof       string      `json:"proof"`
+		} `json:"inference,omitempty"`
+	} `json:"inference_forecasts_bundle"`
+	InferencesForecastsBundleSignature string `json:"inferences_forecasts_bundle_signature"`
+	PubKey                             string `json:"pubkey"`
 }
 
 type MsgValueBundle struct {
@@ -70,6 +82,9 @@ type MsgValueBundle struct {
 		Worker string `json:"worker"`
 	} `json:"forecaster_values"`
 	ReputerRequestNonce struct {
+		WorkerNonce struct {
+			BlockHeight string `json:"block_height"`
+		} `json:"worker_nonce"`
 		ReputerNonce struct {
 			BlockHeight string `json:"block_height"`
 		} `json:"reputer_nonce"`
@@ -103,6 +118,25 @@ type MsgInsertReputerPayload struct {
 		Signature   string         `json:"signature"`
 		ValueBundle MsgValueBundle `json:"value_bundle"`
 	} `json:"reputer_value_bundle"`
+}
+
+type MsgInsertBulkReputerPayload struct {
+	Type                string `json:"@type"`
+	Sender              string `json:"sender"`
+	TopicID             string `json:"topic_id"`
+	ReputerRequestNonce struct {
+		WorkerNonce struct {
+			BlockHeight string `json:"block_height"`
+		} `json:"worker_nonce"`
+		ReputerNonce struct {
+			BlockHeight string `json:"block_height"`
+		} `json:"reputer_nonce"`
+	} `json:"reputer_request_nonce"`
+	ReputerValueBundles []struct {
+		Pubkey      string         `json:"pubkey"`
+		Signature   string         `json:"signature"`
+		ValueBundle MsgValueBundle `json:"value_bundle"`
+	} `json:"reputer_value_bundles"`
 }
 
 type MsgSend struct {

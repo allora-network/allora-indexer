@@ -243,6 +243,7 @@ func createMessagesTablesSQL() string {
 		message_height INT,
 		message_id INT,
 		sender VARCHAR(255),
+		worker_nonce_block_height INT,
 		reputer_nonce_block_height INT,
 		topic_id INT
 	);
@@ -504,11 +505,11 @@ func insertEvents(events []EventRecord) error {
 
 		// Additional handling for scores and rewards
 		switch event.Type {
-		case "emissions.v2.EventScoresSet":
+		case "emissions.v1.EventScoresSet", "emissions.v2.EventScoresSet":
 			err = insertScore(event)
-		case "emissions.v2.EventRewardsSettled":
+		case "emissions.v1.EventRewardsSettled", "emissions.v2.EventRewardsSettled":
 			err = insertReward(event)
-		case "emissions.v2.EventNetworkLossSet":
+		case "emissions.v1.EventNetworkLossSet", "emissions.v2.EventNetworkLossSet":
 			err = insertNetworkLoss(event)
 		default:
 			log.Info().Str("Event type", event.Type).Msg("skipping event type ")

@@ -2,10 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"os"
-	"os/exec"
 	"os/signal"
 	"strconv"
 	"sync"
@@ -31,75 +28,6 @@ type ClientConfig struct {
 var config ClientConfig
 var workersNum uint
 
-func ExecuteCommand(cliApp, node string, parts []string) ([]byte, error) {
-	if len(parts) == 0 {
-		return nil, fmt.Errorf("no command parts provided")
-	}
-
-	var completeParts []string
-	for _, part := range parts {
-		completeParts = append(completeParts, part)
-	}
-
-	completeParts = replacePlaceholders(completeParts, "{node}", node)
-	completeParts = replacePlaceholders(completeParts, "{cliApp}", cliApp)
-
-	log.Debug().Strs("command", completeParts).Msg("Executing command")
-	cmd := exec.Command(completeParts[0], completeParts[1:]...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true,
-	}
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		log.Error().Err(err).Str("output", string(output)).Msg("Command execution failed")
-		return nil, err
-	}
-
-	return output, nil
-}
-
-func replacePlaceholders(parts []string, placeholder, value string) []string {
-	var replacedParts []string
-	for _, part := range parts {
-		if part == placeholder {
-			replacedParts = append(replacedParts, value)
-		} else {
-			replacedParts = append(replacedParts, part)
-		}
-	}
-	return replacedParts
-}
-
-func ExecuteCommandByKey[T any](config ClientConfig, key string, params ...string) (T, error) {
-	var result T
-
-	cmd, ok := config.Commands[key]
-	if !ok {
-		return result, fmt.Errorf("command not found")
-	}
-
-	if len(params) > 0 {
-		cmd.Parts = append(cmd.Parts, params...)
-	}
-
-	log.Debug().Str("commandName", key).Msg("Starting execution")
-	output, err := ExecuteCommand(config.CliApp, config.Node, cmd.Parts)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to execute command")
-		return result, err
-	}
-
-	log.Debug().Str("raw output", string(output)).Msg("Command raw output")
-
-	err = json.Unmarshal(output, &result)
-	if err != nil {
-		log.Error().Err(err).Str("json", string(output)).Msg("Failed to unmarshal JSON")
-		return result, err
-	}
-
-	return result, nil
-}
-
 func main() {
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
@@ -112,10 +40,10 @@ func main() {
 		blocks           []string
 	)
 
-	pflag.UintVar(&workersNum, "workersNum", 5, "Number of workers to process blocks concurrently")
-	pflag.StringVar(&nodeFlag, "node", "https://allora-rpc.edgenet.allora.network:443/", "Node address") //# https://default-node-address:443",
+	pflag.UintVar(&workersNum, "workersNum", 100, "Number of workers to process blocks concurrently")
+	pflag.StringVar(&nodeFlag, "node", "https://allora-rpc.devnet.behindthecurtain.xyz", "Node address") //# https://default-node-address:443",
 	pflag.StringVar(&cliAppFlag, "cliApp", "allorad", "CLI app to execute commands")
-	pflag.StringVar(&connectionFlag, "conn", "postgres://pump:pump@localhost:5432/pump", "Database connection string")
+	pflag.StringVar(&connectionFlag, "conn", "postgres://app:app@localhost:5433/app", "Database connection string")
 	pflag.StringSliceVar(&blocks, "blocks", nil, "A list of blocks to process.")
 	pflag.BoolVar(&exitWhenCaughtUp, "exitWhenCaughtUp", false, "Exit when last block is processed. If false will keep processing new blocks.")
 	pflag.Parse()
