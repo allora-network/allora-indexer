@@ -2,6 +2,10 @@ package main
 
 import (
 	"fmt"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/rs/zerolog/log"
 	"io/ioutil"
 	"os"
@@ -10,38 +14,37 @@ import (
 
 func downloadBackupFromS3() (string, error) {
 	log.Info().Msg("Downloading SQL file from S3...")
-	//sess, err := session.NewSession(&aws.Config{
-	//	Region:      aws.String("us-east-1"), // Update with your region
-	//	Credentials: credentials.NewStaticCredentials(awsAccessKey, awsSecretKey, ""),
-	//})
-	//if err != nil {
-	//	return "", fmt.Errorf("failed to create AWS session: %v", err)
-	//}
-	//
-	//s3Client := s3.New(sess)
-	//
+	sess, err := session.NewSession(&aws.Config{
+		Region:      aws.String("us-east-1"), // Update with your region
+		Credentials: credentials.NewStaticCredentials(awsAccessKey, awsSecretKey, ""),
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to create AWS session: %v", err)
+	}
+
+	s3Client := s3.New(sess)
+
 	tempFile, err := ioutil.TempFile("", "backup-*.dump")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temporary file: %v", err)
 	}
-	//defer tempFile.Close()
-	//
-	//resp, err := s3Client.GetObject(&s3.GetObjectInput{
-	//	Bucket: aws.String(s3BucketName),
-	//	Key:    aws.String(s3FileKey),
-	//})
-	//if err != nil {
-	//	return "", fmt.Errorf("failed to download file from S3: %v", err)
-	//}
-	//defer resp.Body.Close()
-	//
-	//_, err = tempFile.ReadFrom(resp.Body)
-	//if err != nil {
-	//	return "", fmt.Errorf("failed to read from S3 response body: %v", err)
-	//}
-	//fileName := tempFile.Name()
+	defer tempFile.Close()
 
-	fileName := "/var/folders/jq/xh3bn4wn37sb21xhcgjprw240000gn/T/backup-3857248587.dump"
+	resp, err := s3Client.GetObject(&s3.GetObjectInput{
+		Bucket: aws.String(s3BucketName),
+		Key:    aws.String(s3FileKey),
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to download file from S3: %v", err)
+	}
+	defer resp.Body.Close()
+
+	_, err = tempFile.ReadFrom(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read from S3 response body: %v", err)
+	}
+	fileName := tempFile.Name()
+
 	_ = restoreBackupToDB(fileName)
 	return tempFile.Name(), nil
 }

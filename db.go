@@ -155,8 +155,7 @@ func createMessagesTablesSQL() string {
 		type VARCHAR(255),
 		sender VARCHAR(255),
 		data TEXT,
-		hash NUMERIC,
-		CONSTRAINT "messages_height_data" UNIQUE ("height", "hash")
+		hash NUMERIC
 	);
 
 	CREATE TABLE IF NOT EXISTS ` + TB_TOPICS + ` (
@@ -327,7 +326,7 @@ func createEventsTablesSQL() string {
 		type VARCHAR(255),
 		sender VARCHAR(255),
 		data TEXT,
-		CONSTRAINT "events_height_data" UNIQUE ("height", "data")
+		hash NUMERIC
 	);
 
 
@@ -501,10 +500,11 @@ func insertEvents(events []EventRecord) error {
 		if err != nil {
 			return err
 		}
+		var dataHash = hash(string(data))
 		_, err = dbPool.Exec(context.Background(), `
-			INSERT INTO `+TB_EVENTS+` (height, type, sender, data) VALUES ($1, $2, $3, $4)
-			ON CONFLICT (height, data, type) DO NOTHING`,
-			event.Height, event.Type, event.Sender, string(data))
+			INSERT INTO `+TB_EVENTS+` (height, type, sender, data, hash) VALUES ($1, $2, $3, $4, $5)
+			ON CONFLICT (height, hash, type) DO NOTHING`,
+			event.Height, event.Type, event.Sender, string(data), dataHash)
 		if err != nil {
 			return fmt.Errorf("event insert failed: %v", err)
 		}
@@ -806,6 +806,40 @@ func insertValueBundle(
 			return err
 		}
 	}
+	return nil
+}
+
+func addUniqueConstraints() error {
+	_, err := dbPool.Exec(context.Background(), `
+				ALTER TABLE `+TB_MESSAGES+` drop CONSTRAINT messages_height_data`,
+	)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to remove constraint unique from message")
+	}
+
+	_, err = dbPool.Exec(context.Background(), `
+				ALTER TABLE `+TB_MESSAGES+` ADD CONSTRAINT messages_height_data UNIQUE (height, hash)`,
+	)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to add constraint unique to message")
+		return err
+	}
+
+	_, err = dbPool.Exec(context.Background(), `
+				ALTER TABLE `+TB_EVENTS+` drop CONSTRAINT events_height_data`,
+	)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to remove constraint unique from events")
+	}
+
+	_, err = dbPool.Exec(context.Background(), `
+				ALTER TABLE `+TB_EVENTS+` ADD CONSTRAINT events_height_data UNIQUE (height, hash, type)`,
+	)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to add constraint unique to events")
+		return err
+	}
+
 	return nil
 }
 

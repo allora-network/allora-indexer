@@ -50,8 +50,8 @@ func main() {
 	pflag.StringVar(&nodeFlag, "NODE", "https://allora-rpc.testnet-1.testnet.allora.network/", "Node address") //# https://default-node-address:443",
 	pflag.StringVar(&cliAppFlag, "CLIAPP", "allorad", "CLI app to execute commands")
 	pflag.StringVar(&connectionFlag, "CONNECTION", "postgres://pump:pump@localhost:5433/pump", "Database connection string")
-	pflag.StringVar(&awsAccessKey, "AWS_ACCESS_KEY", "AKIA2EGUSXYUN4Q4F47R", "AWS access key")
-	pflag.StringVar(&awsSecretKey, "AWS_SECURITY_KEY", "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", "AWS security key")
+	pflag.StringVar(&awsAccessKey, "AWS_ACCESS_KEY", "", "AWS access key")
+	pflag.StringVar(&awsSecretKey, "AWS_SECURITY_KEY", "", "AWS security key")
 	pflag.StringVar(&s3BucketName, "S3_BUCKET_NAME", "allora-testnet-1-indexer-backups", "AWS s3 bucket name")
 	pflag.StringVar(&s3FileKey, "S3_FILE_KEY", "pgdump-20240814-09-26-18.dump", "AWS s3 file key")
 	pflag.BoolVar(&resetDB, "RESET_DB", false, "Database reset flag")
@@ -60,12 +60,15 @@ func main() {
 	pflag.Parse()
 
 	log.Info().
-		Uint("workersNum", workersNum).
-		Str("node", nodeFlag).
-		Str("cliApp", cliAppFlag).
-		Str("conn", connectionFlag).
-		Strs("blocks", blocks).
-		Bool("exitWhenCaughtUp", exitWhenCaughtUp).
+		Uint("WORKERS_NUM", workersNum).
+		Str("NODE", nodeFlag).
+		Str("CLIAPP", cliAppFlag).
+		Str("CONNECTION", connectionFlag).
+		Str("AWS_ACCESS_KEY", awsAccessKey).
+		Str("AWS_SECURITY_KEY", awsSecretKey).
+		Str("S3_BUCKET_NAME", s3BucketName).
+		Str("S3_FILE_KEY", s3FileKey).
+		Bool("EXIT_APP", exitWhenCaughtUp).
 		Msg("pump started")
 
 	// define the commands to execute payloads
@@ -103,6 +106,8 @@ func main() {
 		log.Log().Err(err).Msg("Failed restoring DB and start fetching blockchain data from scratch")
 		setupDB()
 	}
+
+	_ = addUniqueConstraints()
 
 	// Set up a channel to listen for interrupt signals
 	signalChan := make(chan os.Signal, 1)
