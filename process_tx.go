@@ -111,7 +111,7 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 			json.Unmarshal(mjson, &workerPayload)
 			insertWorkerPayload(height, messageId, workerPayload)
 			if err != nil {
-				log.Error().Err(err).Msgf("Failed to insertBulkWorkerPayload, height: %d", height)
+				log.Error().Err(err).Msgf("Failed to insertWorkerPayload, height: %d", height)
 			}
 
 		case "/emissions.v1.MsgInsertBulkReputerPayload":
@@ -121,7 +121,7 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 			json.Unmarshal(mjson, &reputerPayload)
 			insertBulkReputerPayload(height, messageId, reputerPayload)
 			if err != nil {
-				log.Error().Err(err).Msgf("Failed to insertInferenceForecasts, height: %d", height)
+				log.Error().Err(err).Msgf("Failed to insertBulkReputerPayload, height: %d", height)
 			}
 		case "/emissions.v2.MsgInsertReputerPayload":
 			// Process MsgInsertReputerPayload
@@ -130,7 +130,7 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 			json.Unmarshal(mjson, &reputerPayload)
 			insertReputerPayload(height, messageId, reputerPayload)
 			if err != nil {
-				log.Error().Err(err).Msgf("Failed to insertInferenceForecasts, height: %d", height)
+				log.Error().Err(err).Msgf("Failed to insertReputerPayload, height: %d", height)
 			}
 
 		default:

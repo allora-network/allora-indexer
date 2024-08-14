@@ -27,6 +27,12 @@ type ClientConfig struct {
 
 var config ClientConfig
 var workersNum uint
+var awsAccessKey string
+var awsSecretKey string
+var s3BucketName string
+var s3FileKey string
+var parallelJobs uint
+var resetDB bool
 
 func main() {
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
@@ -40,21 +46,29 @@ func main() {
 		blocks           []string
 	)
 
-	pflag.UintVar(&workersNum, "workersNum", 100, "Number of workers to process blocks concurrently")
-	pflag.StringVar(&nodeFlag, "node", "https://allora-rpc.devnet.behindthecurtain.xyz", "Node address") //# https://default-node-address:443",
-	pflag.StringVar(&cliAppFlag, "cliApp", "allorad", "CLI app to execute commands")
-	pflag.StringVar(&connectionFlag, "conn", "postgres://app:app@localhost:5433/app", "Database connection string")
-	pflag.StringSliceVar(&blocks, "blocks", nil, "A list of blocks to process.")
-	pflag.BoolVar(&exitWhenCaughtUp, "exitWhenCaughtUp", false, "Exit when last block is processed. If false will keep processing new blocks.")
+	pflag.UintVar(&workersNum, "WORKERS_NUM", 5, "Number of workers to process blocks concurrently")
+	pflag.StringVar(&nodeFlag, "NODE", "https://allora-rpc.testnet-1.testnet.allora.network/", "Node address") //# https://default-node-address:443",
+	pflag.StringVar(&cliAppFlag, "CLIAPP", "allorad", "CLI app to execute commands")
+	pflag.StringVar(&connectionFlag, "CONNECTION", "postgres://pump:pump@localhost:5433/pump", "Database connection string")
+	pflag.StringVar(&awsAccessKey, "AWS_ACCESS_KEY", "", "AWS access key")
+	pflag.StringVar(&awsSecretKey, "AWS_SECURITY_KEY", "", "AWS security key")
+	pflag.StringVar(&s3BucketName, "S3_BUCKET_NAME", "allora-testnet-1-indexer-backups", "AWS s3 bucket name")
+	pflag.StringVar(&s3FileKey, "S3_FILE_KEY", "pgdump-20240814-09-26-18.dump", "AWS s3 file key")
+	pflag.BoolVar(&resetDB, "RESET_DB", false, "Database reset flag")
+	pflag.UintVar(&parallelJobs, "RESTORE_PARALLEL_JOBS", 4, "Database reset flag")
+	pflag.BoolVar(&exitWhenCaughtUp, "EXIT_APP", false, "Exit when last block is processed. If false will keep processing new blocks.")
 	pflag.Parse()
 
 	log.Info().
-		Uint("workersNum", workersNum).
-		Str("node", nodeFlag).
-		Str("cliApp", cliAppFlag).
-		Str("conn", connectionFlag).
-		Strs("blocks", blocks).
-		Bool("exitWhenCaughtUp", exitWhenCaughtUp).
+		Uint("WORKERS_NUM", workersNum).
+		Str("NODE", nodeFlag).
+		Str("CLIAPP", cliAppFlag).
+		Str("CONNECTION", connectionFlag).
+		Str("AWS_ACCESS_KEY", awsAccessKey).
+		Str("AWS_SECURITY_KEY", awsSecretKey).
+		Str("S3_BUCKET_NAME", s3BucketName).
+		Str("S3_FILE_KEY", s3FileKey).
+		Bool("EXIT_APP", exitWhenCaughtUp).
 		Msg("pump started")
 
 	// define the commands to execute payloads
@@ -86,6 +100,14 @@ func main() {
 	// Init DB
 	initDB(connectionFlag)
 	defer closeDB()
+
+	_, err := downloadBackupFromS3()
+	if err != nil {
+		log.Log().Err(err).Msg("Failed restoring DB and start fetching blockchain data from scratch")
+		setupDB()
+	}
+
+	_ = addUniqueConstraints()
 
 	// Set up a channel to listen for interrupt signals
 	signalChan := make(chan os.Signal, 1)
