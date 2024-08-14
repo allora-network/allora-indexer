@@ -154,7 +154,7 @@ func createMessagesTablesSQL() string {
 		height BIGINT,
 		type VARCHAR(255),
 		sender VARCHAR(255),
-		data TEXT,
+		data JSONB,
 		hash NUMERIC
 	);
 
@@ -325,7 +325,7 @@ func createEventsTablesSQL() string {
 		height BIGINT,
 		type VARCHAR(255),
 		sender VARCHAR(255),
-		data TEXT,
+		data JSONB,
 		hash NUMERIC
 	);
 
