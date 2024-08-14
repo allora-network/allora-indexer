@@ -64,8 +64,6 @@ func main() {
 		Str("NODE", nodeFlag).
 		Str("CLIAPP", cliAppFlag).
 		Str("CONNECTION", connectionFlag).
-		Str("AWS_ACCESS_KEY", awsAccessKey).
-		Str("AWS_SECURITY_KEY", awsSecretKey).
 		Str("S3_BUCKET_NAME", s3BucketName).
 		Str("S3_FILE_KEY", s3FileKey).
 		Bool("EXIT_APP", exitWhenCaughtUp).

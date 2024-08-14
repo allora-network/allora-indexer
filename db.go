@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math/big"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -72,11 +73,51 @@ const (
 
 var dbPool *pgxpool.Pool //*pgx.Conn
 
+func verifyUri(originalPath string) string {
+	var res = ""
+	// Split the URL into components at the '@' symbol
+	parts := strings.Split(originalPath, "@")
+	if len(parts) != 2 {
+		fmt.Println("Invalid URL format")
+		return res
+	}
+
+	// Extract the userinfo (username:password) part by splitting the protocol part
+	protocolAndUserInfo := strings.Split(parts[0], "//")
+	if len(protocolAndUserInfo) != 2 {
+		fmt.Println("Invalid userinfo format")
+		return res
+	}
+
+	protocol := protocolAndUserInfo[0] // "postgres:"
+	userInfo := protocolAndUserInfo[1] // "postgres:9:[.nAFs:gZU$[h-Bts5(A5+1r{{"
+
+	// Now, split the userInfo into username and password using the first ':' as a delimiter
+	credParts := strings.SplitN(userInfo, ":", 2)
+	if len(credParts) != 2 {
+		fmt.Println("Invalid credentials format")
+		return res
+	}
+
+	username := credParts[0] // "postgres"
+	password := credParts[1] // "9:[.nAFs:gZU$[h-Bts5(A5+1r{{"
+
+	// Encode the password
+	encodedPassword := url.QueryEscape(password)
+
+	// Reconstruct the new userInfo part
+	newUserInfo := fmt.Sprintf("%s:%s", username, encodedPassword)
+
+	// Reconstruct the final URL
+	res = fmt.Sprintf("%s//%s@%s", protocol, newUserInfo, parts[1])
+	return res
+}
+
 func initDB(dataSourceName string) {
 	var err error
 	// dbPool, err = pgx.Connect(context.Background(), dataSourceName)
 
-	dbConfig, err := pgxpool.ParseConfig(dataSourceName)
+	dbConfig, err := pgxpool.ParseConfig(verifyUri(dataSourceName))
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create a config, error: ")
 	}
