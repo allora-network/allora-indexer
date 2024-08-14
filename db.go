@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"math/big"
 	"os"
 	"strconv"
@@ -153,8 +154,9 @@ func createMessagesTablesSQL() string {
 		height BIGINT,
 		type VARCHAR(255),
 		sender VARCHAR(255),
-		data JSONB,
-		CONSTRAINT "messages_height_data" UNIQUE ("height", "data")
+		data TEXT,
+		hash NUMERIC,
+		CONSTRAINT "messages_height_data" UNIQUE ("height", "hash")
 	);
 
 	CREATE TABLE IF NOT EXISTS ` + TB_TOPICS + ` (
@@ -216,7 +218,7 @@ func createMessagesTablesSQL() string {
 		topic_id INT,
 		block_height INT,
 		inferer VARCHAR(255),
-		value VARCHAR(255),
+		value TEXT,
 		extra_data TEXT,
 		proof TEXT
 	);
@@ -324,7 +326,7 @@ func createEventsTablesSQL() string {
 		height BIGINT,
 		type VARCHAR(255),
 		sender VARCHAR(255),
-		data JSONB,
+		data TEXT,
 		CONSTRAINT "events_height_data" UNIQUE ("height", "data")
 	);
 
@@ -428,17 +430,21 @@ func insertBlockInfo(blockInfo DBBlockInfo) error {
 func insertMessage(height uint64, mtype string, sender string, data string) (uint64, error) {
 	// Write Topic to the database
 	var id uint64
+	var dataHash = hash(data)
+	log.Info().Msgf("Inserting message, hash: %d", height)
 	err := dbPool.QueryRow(context.Background(), `
 		INSERT INTO `+TB_MESSAGES+` (
 			height,
 			type,
 			sender,
-			data
-		) VALUES ($1, $2, $3, $4) RETURNING id`,
+			data,
+			hash
+		) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
 		height,
 		mtype,
 		sender,
 		data,
+		dataHash,
 	).Scan(&id)
 	if err != nil {
 		return 0, err
@@ -496,9 +502,9 @@ func insertEvents(events []EventRecord) error {
 			return err
 		}
 		_, err = dbPool.Exec(context.Background(), `
-			INSERT INTO `+TB_EVENTS+` (height, type, sender, data) VALUES ($1, $2, $3, $4) 
-			ON CONFLICT (height, data) DO NOTHING`,
-			event.Height, event.Type, event.Sender, data)
+			INSERT INTO `+TB_EVENTS+` (height, type, sender, data) VALUES ($1, $2, $3, $4)
+			ON CONFLICT (height, data, type) DO NOTHING`,
+			event.Height, event.Type, event.Sender, string(data))
 		if err != nil {
 			return fmt.Errorf("event insert failed: %v", err)
 		}
@@ -801,4 +807,10 @@ func insertValueBundle(
 		}
 	}
 	return nil
+}
+
+func hash(s string) uint32 {
+	h := fnv.New32a()
+	h.Write([]byte(s))
+	return h.Sum32()
 }
