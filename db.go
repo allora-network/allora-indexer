@@ -89,8 +89,8 @@ func verifyUri(originalPath string) string {
 		return res
 	}
 
-	protocol := protocolAndUserInfo[0] // "postgres:"
-	userInfo := protocolAndUserInfo[1] // "postgres:9:[.nAFs:gZU$[h-Bts5(A5+1r{{"
+	protocol := protocolAndUserInfo[0]
+	userInfo := protocolAndUserInfo[1]
 
 	// Now, split the userInfo into username and password using the first ':' as a delimiter
 	credParts := strings.SplitN(userInfo, ":", 2)
@@ -99,8 +99,8 @@ func verifyUri(originalPath string) string {
 		return res
 	}
 
-	username := credParts[0] // "postgres"
-	password := credParts[1] // "9:[.nAFs:gZU$[h-Bts5(A5+1r{{"
+	username := credParts[0]
+	password := credParts[1]
 
 	// Encode the password
 	encodedPassword := url.QueryEscape(password)
