@@ -2,14 +2,14 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/rs/zerolog/log"
-	"io/ioutil"
-	"os"
-	"os/exec"
 )
 
 func downloadBackupFromS3() (string, error) {
@@ -24,7 +24,7 @@ func downloadBackupFromS3() (string, error) {
 
 	s3Client := s3.New(sess)
 
-	tempFile, err := ioutil.TempFile("", "backup-*.dump")
+	tempFile, err := os.CreateTemp("", "backup-*.dump")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temporary file: %v", err)
 	}
