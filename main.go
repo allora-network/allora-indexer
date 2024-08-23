@@ -96,7 +96,7 @@ func main() {
 	}
 
 	// Init DB
-	initDB(connectionFlag)
+	initDB(connectionFlag, resetDB)
 	defer closeDB()
 
 	_, err := downloadBackupFromS3()
