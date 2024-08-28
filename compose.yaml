@@ -3,24 +3,29 @@ services:
     image: postgres:16-bookworm
     ports:
       - "5432:5432"
-    environment:
-      POSTGRES_USER: pump
-      POSTGRES_PASSWORD: pump
-      POSTGRES_DB: pump
+    env_file:
+      - .env.db
     volumes:
-      - data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
 
-  admin:
-    image: adminer
-    restart: always
+  provider:
+    build:
+      context: .
+      dockerfile: Dockerfile
     depends_on:
       - db
-    ports:
-      - 8080:8080
+    env_file:
+      - .env
+    command:
+      - --WORKERS_NUM=${WORKERS_NUM}
+      - --NODE=${NODE}
+      - --CONNECTION=${CONNECTION}
+      - --AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
+      - --AWS_SECURITY_KEY=${AWS_SECURITY_KEY}
+      - --S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - --S3_FILE_KEY=${S3_FILE_KEY}
+      - --MODE=${MODE}
 
 volumes:
-  data:
+  postgres_data:
 
-networks:
-  pump-network:
-    driver: bridge
