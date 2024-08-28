@@ -113,23 +113,21 @@ func verifyUri(originalPath string) string {
 	return res
 }
 
-func initDB(dataSourceName string, resetDB bool) {
+func initDB(dataSourceName string) error {
 	var err error
 	// dbPool, err = pgx.Connect(context.Background(), dataSourceName)
 
 	dbConfig, err := pgxpool.ParseConfig(verifyUri(dataSourceName))
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to create a config, error: ")
+		log.Error().Err(err).Msg("Failed to create a config, error: ")
+		return err
 	}
 	dbPool, err = pgxpool.NewWithConfig(context.Background(), dbConfig)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
-		os.Exit(1)
+		return err
 	}
-
-	if resetDB {
-		setupDB()
-	}
+	return nil
 }
 
 func closeDB() {
@@ -138,18 +136,36 @@ func closeDB() {
 	}
 }
 
-func setupDB() {
-	executeSQL(createBlockInfoTableSQL())
-	executeSQL(createConsensusParamsTableSQL())
-	executeSQL(createMessagesTablesSQL())
-	executeSQL(createEventsTablesSQL())
+func setupDB() error {
+	err := executeSQL(createBlockInfoTableSQL())
+	if err != nil {
+		return err
+	}
+	err = executeSQL(createConsensusParamsTableSQL())
+	if err != nil {
+		return err
+	}
+	err = executeSQL(createMessagesTablesSQL())
+	if err != nil {
+		return err
+	}
+	err = executeSQL(createEventsTablesSQL())
+	if err != nil {
+		return err
+	}
+	err = addUniqueConstraints()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
-func executeSQL(sqlStatement string) {
+func executeSQL(sqlStatement string) error {
 	if _, err := dbPool.Exec(context.Background(), sqlStatement); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to execute SQL statement: %v\n", err)
-		os.Exit(1)
+		return err
 	}
+	return nil
 }
 
 func createBlockInfoTableSQL() string {
@@ -736,6 +752,30 @@ func insertNetworkLoss(event EventRecord) error {
 	log.Info().Msgf("Inserting NetworkLoss bundle: %d, %v", bundleId, valueBundle)
 	insertValueBundle(bundleId, valueBundle, TB_NETWORKLOSS_BUNDLE_VALUES)
 	return nil
+}
+
+func isDataEmpty(table string) (bool, error) {
+	var count int
+	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", table)
+	err := dbPool.QueryRow(context.Background(), query).Scan(&count)
+	if err != nil {
+		log.Error().Err(err).Msgf("Failed to check if table %s is empty", table)
+		return false, err
+	}
+	return count == 0, nil
+}
+
+func tableExists(tableName string) (bool, error) {
+	var exists bool
+	err := dbPool.QueryRow(context.Background(), `
+		SELECT EXISTS (
+			SELECT FROM information_schema.tables 
+			WHERE table_name = $1
+		)`, tableName).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
 }
 
 func insertValueBundle(

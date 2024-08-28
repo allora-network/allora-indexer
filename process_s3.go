@@ -2,8 +2,12 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"strings"
+
+	"github.com/schollz/progressbar/v3"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -12,7 +16,18 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-func downloadBackupFromS3() (string, error) {
+type progressReader struct {
+	reader io.Reader
+	bar    *progressbar.ProgressBar
+}
+
+func (pr *progressReader) Read(p []byte) (int, error) {
+	n, err := pr.reader.Read(p)
+	pr.bar.Add(n)
+	return n, err
+}
+
+func restoreBackupFromS3() (string, error) {
 	log.Info().Msg("Downloading SQL file from S3...")
 	sess, err := session.NewSession(&aws.Config{
 		Region:      aws.String("us-east-1"), // Update with your region
@@ -23,6 +38,15 @@ func downloadBackupFromS3() (string, error) {
 	}
 
 	s3Client := s3.New(sess)
+
+	// Check if we need to fetch the latest file key
+	if s3FileKey == "latest" {
+		latestFileKey, err := getLatestFileKey(s3Client)
+		if err != nil {
+			return "", fmt.Errorf("failed to get latest file key: %v", err)
+		}
+		s3FileKey = latestFileKey
+	}
 
 	tempFile, err := os.CreateTemp("", "backup-*.dump")
 	if err != nil {
@@ -39,14 +63,51 @@ func downloadBackupFromS3() (string, error) {
 	}
 	defer resp.Body.Close()
 
-	_, err = tempFile.ReadFrom(resp.Body)
+	// Create a progress bar
+	bar := progressbar.DefaultBytes(
+		*resp.ContentLength,
+		"Downloading",
+	)
+
+	// Create a progress reader
+	progressReader := &progressReader{
+		reader: resp.Body,
+		bar:    bar,
+	}
+
+	// Copy the data from the progress reader to the temp file
+	_, err = io.Copy(tempFile, progressReader)
 	if err != nil {
 		return "", fmt.Errorf("failed to read from S3 response body: %v", err)
 	}
+
 	fileName := tempFile.Name()
 
 	_ = restoreBackupToDB(fileName)
 	return tempFile.Name(), nil
+}
+
+func getLatestFileKey(s3Client *s3.S3) (string, error) {
+	resp, err := s3Client.GetObject(&s3.GetObjectInput{
+		Bucket: aws.String(s3BucketName),
+		Key:    aws.String("latest_backup.txt"),
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to get latest_backup.txt: %v", err)
+	}
+	defer resp.Body.Close()
+
+	content, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read latest_backup.txt content: %v", err)
+	}
+
+	latestFileKey := strings.TrimSpace(string(content))
+	if latestFileKey == "" {
+		return "", fmt.Errorf("latest_backup.txt is empty")
+	}
+
+	return latestFileKey, nil
 }
 
 func gunzipFile(src string) error {
