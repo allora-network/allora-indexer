@@ -40,7 +40,8 @@ However, it is possible to parse only specific events by passing the flag: `--bl
 
 
 
-## Flags
+Flags and Usage
+---------------
 
 | Flag | Default Value | Description |
 |------|---------------|-------------|
@@ -86,3 +87,16 @@ and `CONNECTION` (of the type `postgres://default:password@db:5432/app`) where t
    ```
    ./blockchain-pump --MODE=full --EXIT_APP=true
    ```
+
+
+Recreation of database
+----------------------
+
+To recreate the database in the provided docker compose setup, the volume can be removed with the following command:
+```
+docker compose down
+docker compose volume rm allora-data-pump_postgres_data
+# In case of error, check the volume name with: docker volume ls 
+
+```
+

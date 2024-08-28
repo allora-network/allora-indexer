@@ -926,21 +926,6 @@ func addUniqueConstraints() error {
 	return nil
 }
 
-// completely recreates the database
-func recreateDatabase(database string) error {
-	_, err := dbPool.Exec(context.Background(), `DROP DATABASE IF EXISTS `+database)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to drop database")
-		return err
-	}
-	_, err = dbPool.Exec(context.Background(), "CREATE DATABASE "+database)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to create database")
-		return err
-	}
-	return nil
-}
-
 func hash(s string) uint32 {
 	h := fnv.New32a()
 	h.Write([]byte(s))
