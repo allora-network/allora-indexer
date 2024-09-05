@@ -3,12 +3,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/allora-network/allora-cosmos-pump/types"
-	"github.com/rs/zerolog/log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"syscall"
+
+	"github.com/allora-network/allora-indexer/types"
+	"github.com/rs/zerolog/log"
 )
 
 func ExecuteCommand(cliApp, node string, parts []string) ([]byte, error) {

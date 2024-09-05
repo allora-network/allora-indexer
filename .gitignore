@@ -1,6 +1,6 @@
 data/
 postgres_data/
-allora-cosmos-pump
+allora-indexer
 pump
 allorad
 vendor/

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/allora-network/allora-cosmos-pump/types"
+	"github.com/allora-network/allora-indexer/types"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
@@ -569,18 +569,17 @@ func insertEvents(events []EventRecord) error {
 		}
 
 		// Additional handling for scores and rewards
-		switch event.Type {
-		case "emissions.v1.EventScoresSet", "emissions.v2.EventScoresSet":
+		switch {
+		case strings.HasPrefix(event.Type, "emissions.v") && strings.HasSuffix(event.Type, "EventScoresSet"):
 			err = insertScore(event)
-		case "emissions.v1.EventRewardsSettled", "emissions.v2.EventRewardsSettled":
+		case strings.HasPrefix(event.Type, "emissions.v") && strings.HasSuffix(event.Type, "EventRewardsSettled"):
 			err = insertReward(event)
-		case "emissions.v1.EventNetworkLossSet", "emissions.v2.EventNetworkLossSet":
+		case strings.HasPrefix(event.Type, "emissions.v") && strings.HasSuffix(event.Type, "EventNetworkLossSet"):
 			err = insertNetworkLoss(event)
 		default:
 			log.Info().Str("Event type", event.Type).Msg("skipping event type ")
 			continue
 		}
-
 		if err != nil {
 			return err
 		}
@@ -894,7 +893,7 @@ func insertValueBundle(
 
 func addUniqueConstraints() error {
 	_, err := dbPool.Exec(context.Background(), `
-				ALTER TABLE `+TB_MESSAGES+` drop CONSTRAINT messages_height_data`,
+				ALTER TABLE `+TB_MESSAGES+` drop CONSTRAINT IF EXISTS messages_height_data`,
 	)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to remove constraint unique from message")
@@ -909,7 +908,7 @@ func addUniqueConstraints() error {
 	}
 
 	_, err = dbPool.Exec(context.Background(), `
-				ALTER TABLE `+TB_EVENTS+` drop CONSTRAINT events_height_data`,
+				ALTER TABLE `+TB_EVENTS+` drop CONSTRAINT IF EXISTS events_height_data`,
 	)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to remove constraint unique from events")

@@ -5,10 +5,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/allora-network/allora-cosmos-pump/types"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/allora-network/allora-indexer/types"
 
 	"github.com/rs/zerolog/log"
 )
@@ -16,14 +17,23 @@ import (
 const MAX_RETRY int = 3
 const RETRY_PAUSE int = 2
 
-func processTx(wg *sync.WaitGroup, height uint64, txData string) {
-	defer wg.Done()
+func processTx(ctx context.Context, wg *sync.WaitGroup, height uint64, txData string) error {
+
+	// Use the context to check for cancellation
+	select {
+	case <-ctx.Done():
+		log.Info().Msg("Processing cancelled")
+		return nil // Exit if the context is done
+	default:
+		// Proceed with processing the transaction
+	}
 
 	// Decode the transaction using the decodeTx function
 	//txMessage, err := ExecuteCommandByKey[types.Tx](config, "decodeTx", txData)
 	txMessage, err := DecodeTx(config, txData)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to execute command")
+		return err
 	}
 
 	// Process the decoded transaction message
@@ -32,6 +42,7 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 		mjson, err := json.Marshal(msg)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to unmarshal msg")
+			return err
 		}
 		var creator string
 		if msg["creator"] != nil {
@@ -49,10 +60,11 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 		messageId, err = insertMessage(height, mtype, creator, string(mjson))
 		if err != nil {
 			log.Error().Err(err).Msgf("Failed to insertMessage, height: %d", height)
+			return err
 		}
 
 		switch mtype {
-		case "/emissions.v1.MsgCreateNewTopic", "/emissions.v2.MsgCreateNewTopic":
+		case "/emissions.v1.MsgCreateNewTopic", "/emissions.v2.MsgCreateNewTopic", "/emissions.v3.MsgCreateNewTopic":
 			// Process MsgProcessInferences
 			log.Info().Msg("Processing MsgCreateNewTopic...")
 			// Add your processing logic here
@@ -61,9 +73,10 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 			insertMsgCreateNewTopic(height, messageId, topicPayload)
 			if err != nil {
 				log.Error().Err(err).Msgf("Failed to insertMsgCreateNewTopic, height: %d", height)
+				return err
 			}
 
-		case "/emissions.v1.MsgFundTopic", "/emissions.v1.MsgAddStake", "/emissions.v2.MsgFundTopic", "/emissions.v2.MsgAddStake":
+		case "/emissions.v1.MsgFundTopic", "/emissions.v1.MsgAddStake", "/emissions.v2.MsgFundTopic", "/emissions.v2.MsgAddStake", "/emissions.v3.MsgFundTopic", "/emissions.v3.MsgAddStake":
 			// Process MsgProcessInferences
 			log.Info().Msg("Processing MsgFundTopic...")
 			// Add your processing logic here
@@ -72,6 +85,7 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 			insertMsgFundTopic(height, messageId, msgFundTopic)
 			if err != nil {
 				log.Error().Err(err).Msgf("Failed to insertMsgFundTopic, height: %d", height)
+				return err
 			}
 
 		case "/cosmos.bank.v1beta1.MsgSend":
@@ -83,9 +97,10 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 			insertMsgSend(height, messageId, msgSend)
 			if err != nil {
 				log.Error().Err(err).Msgf("Failed to insertMsgSend, height: %d", height)
+				return err
 			}
 
-		case "/emissions.v1.MsgRegister", "/emissions.v2.MsgRegister":
+		case "/emissions.v1.MsgRegister", "/emissions.v2.MsgRegister", "/emissions.v3.MsgRegister":
 			// Process MsgProcessInferences
 			log.Info().Msg("Processing MsgRegister...")
 			var msgRegister types.MsgRegister
@@ -93,6 +108,7 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 			insertMsgRegister(height, messageId, msgRegister)
 			if err != nil {
 				log.Error().Err(err).Msgf("Failed to insertMsgRegister, height: %d", height)
+				return err
 			}
 
 		case "/emissions.v1.MsgInsertBulkWorkerPayload":
@@ -103,8 +119,9 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 			insertBulkWorkerPayload(height, messageId, workerPayload)
 			if err != nil {
 				log.Error().Err(err).Msgf("Failed to insertBulkWorkerPayload, height: %d", height)
+				return err
 			}
-		case "/emissions.v2.MsgInsertWorkerPayload":
+		case "/emissions.v2.MsgInsertWorkerPayload", "/emissions.v3.MsgInsertWorkerPayload":
 			// Process MsgProcessInferences
 			log.Info().Msg("Processing MsgInsertWorkerPayload...")
 			var workerPayload types.MsgInsertWorkerPayload
@@ -112,6 +129,7 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 			insertWorkerPayload(height, messageId, workerPayload)
 			if err != nil {
 				log.Error().Err(err).Msgf("Failed to insertWorkerPayload, height: %d", height)
+				return err
 			}
 
 		case "/emissions.v1.MsgInsertBulkReputerPayload":
@@ -122,8 +140,9 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 			insertBulkReputerPayload(height, messageId, reputerPayload)
 			if err != nil {
 				log.Error().Err(err).Msgf("Failed to insertBulkReputerPayload, height: %d", height)
+				return err
 			}
-		case "/emissions.v2.MsgInsertReputerPayload":
+		case "/emissions.v2.MsgInsertReputerPayload", "/emissions.v3.MsgInsertReputerPayload":
 			// Process MsgInsertReputerPayload
 			log.Info().Msg("Processing MsgInsertReputerPayload...")
 			var reputerPayload types.MsgInsertReputerPayload
@@ -131,12 +150,14 @@ func processTx(wg *sync.WaitGroup, height uint64, txData string) {
 			insertReputerPayload(height, messageId, reputerPayload)
 			if err != nil {
 				log.Error().Err(err).Msgf("Failed to insertReputerPayload, height: %d", height)
+				return err
 			}
 
 		default:
 			log.Info().Str("type", mtype).Msg("Unknown message type")
 		}
 	}
+	return nil
 }
 
 func insertBulkReputerPayload(blockHeight uint64, messageId uint64, msg types.MsgInsertBulkReputerPayload) error {
