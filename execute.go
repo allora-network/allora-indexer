@@ -3,9 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"syscall"
 
 	"github.com/allora-network/allora-indexer/types"
@@ -81,33 +79,27 @@ func ExecuteCommandByKey[T any](config ClientConfig, key string, params ...strin
 	return result, nil
 }
 
-func DecodeTx(config ClientConfig, params string) (types.Tx, error) {
+func DecodeTx(config ClientConfig, params string, blockHeight uint64) (types.Tx, error) {
 	var result types.Tx
+
+	// Determine the appropriate version based on block height
+	var alloradPath string
+	switch {
+	case blockHeight >= 1004550: // Adjust this condition based on your versioning logic
+		alloradPath = "/usr/local/bin/allorad" // 0.4.0
+	case blockHeight >= 812000:
+		alloradPath = "/usr/local/bin/previous/v3/allorad" // 0.3.0
+	default:
+		alloradPath = "/usr/local/bin/previous/v2/allorad" // 0.2.14
+	}
+
+	// Update the config to use the selected allorad binary
+	config.CliApp = alloradPath
 
 	result, err := ExecuteCommandByKey[types.Tx](config, "decodeTx", params)
 	if err == nil {
 		return result, nil
 	}
-
-	dir, err := os.Getwd()
-	if err != nil {
-		return types.Tx{}, err
-	}
-	root := filepath.Join(dir, "previous")
-	err = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if !d.IsDir() && d.Name() == "allorad" {
-			fmt.Println("Trying decode with file:", path)
-			config.CliApp = path
-			decodeTx, err := ExecuteCommandByKey[types.Tx](config, "decodeTx", params)
-			if err == nil {
-				result = decodeTx
-			}
-		}
-		return nil
-	})
 
 	return result, err
 }

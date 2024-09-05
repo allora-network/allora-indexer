@@ -30,7 +30,7 @@ func processTx(ctx context.Context, wg *sync.WaitGroup, height uint64, txData st
 
 	// Decode the transaction using the decodeTx function
 	//txMessage, err := ExecuteCommandByKey[types.Tx](config, "decodeTx", txData)
-	txMessage, err := DecodeTx(config, txData)
+	txMessage, err := DecodeTx(config, txData, height)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to execute command")
 		return err
