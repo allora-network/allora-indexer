@@ -1,4 +1,4 @@
-module github.com/allora-network/allora-cosmos-pump
+module github.com/allora-network/allora-indexer
 
 go 1.22
 

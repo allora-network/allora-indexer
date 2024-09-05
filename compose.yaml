@@ -8,7 +8,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  provider:
+  indexer:
     build:
       context: .
       dockerfile: Dockerfile
@@ -25,6 +25,8 @@ services:
       - --S3_BUCKET_NAME=${S3_BUCKET_NAME}
       - --S3_FILE_KEY=${S3_FILE_KEY}
       - --MODE=${MODE}
+      - --BOOTSTRAP_BLOCKHEIGHT=${BOOTSTRAP_BLOCKHEIGHT}
+      - --MAX_CONCURRENT_TX_PROCESSING=${MAX_CONCURRENT_TX_PROCESSING}
 
 volumes:
   postgres_data:

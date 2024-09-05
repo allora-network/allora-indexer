@@ -33,6 +33,8 @@ var s3BucketName string
 var s3FileKey string
 var parallelJobs uint
 var mode string
+var bootstrapBlockHeight int64
+var maxConcurrentTxPerRoutine uint
 
 func main() {
 	if err := run(); err != nil {
@@ -61,9 +63,12 @@ func run() error {
 	pflag.StringVar(&awsSecretKey, "AWS_SECURITY_KEY", "", "AWS security key")
 	pflag.StringVar(&s3BucketName, "S3_BUCKET_NAME", "allora-testnet-1-indexer-backups", "AWS s3 bucket name")
 	pflag.StringVar(&s3FileKey, "S3_FILE_KEY", "filename.dump", "AWS s3 file key")
-	pflag.StringVar(&mode, "MODE", "full", "Mode: 'full' for full update, 'dump' to simply overwrite loading a dump and exit, 'empty' to create empty DB and exit")
+	pflag.StringVar(&mode, "MODE", "full", "Mode: 'full' for full update, 'dump' to simply overwrite loading a dump and exit, 'empty' to create empty DB and continue")
 	pflag.UintVar(&parallelJobs, "RESTORE_PARALLEL_JOBS", 4, "Number of parallel jobs (workers) to restore the dump")
 	pflag.BoolVar(&exitWhenCaughtUp, "EXIT_APP", false, "Exit when last block is processed. If false will keep processing new blocks.")
+	pflag.Int64Var(&bootstrapBlockHeight, "BOOTSTRAP_BLOCKHEIGHT", 0, "Start synchronizing on an empty db from this block height - if 0, do not use")
+	pflag.UintVar(&maxConcurrentTxPerRoutine, "MAX_CONCURRENT_TX_PROCESSING", 32, "Number of max concurrent routines to process tx")
+
 	pflag.Parse()
 
 	log.Info().
@@ -75,6 +80,8 @@ func run() error {
 		Str("S3_FILE_KEY", s3FileKey).
 		Str("MODE", mode).
 		Bool("EXIT_APP", exitWhenCaughtUp).
+		Int64("BOOTSTRAP_BLOCKHEIGHT", bootstrapBlockHeight).
+		Uint("MAX_CONCURRENT_TX_PROCESSING", maxConcurrentTxPerRoutine).
 		Msg("pump started")
 
 	// define the commands to execute payloads
@@ -149,7 +156,6 @@ func run() error {
 			_, err := restoreBackupFromS3()
 			if err != nil {
 				log.Err(err).Msg("Failed restoring DB and start fetching blockchain data from scratch")
-				return err
 			} else {
 				log.Info().Msg("Successfully loaded dump")
 			}
@@ -188,7 +194,7 @@ func run() error {
 		} else {
 			// If no blocks are provided, start the main loop
 			log.Info().Msg("Starting main loop...")
-			generateBlocksLoop(ctx, signalChan, heightsChan, exitWhenCaughtUp)
+			generateBlocksLoop(ctx, signalChan, heightsChan, exitWhenCaughtUp, bootstrapBlockHeight)
 		}
 
 		log.Info().Msg("Exited main loop, waiting for subroutines to finish...")
@@ -197,20 +203,37 @@ func run() error {
 	return nil
 }
 
+func getStartingHeight(bootstrapBlockHeight int64) (uint64, error) {
+	if bootstrapBlockHeight > 0 {
+		log.Info().Msgf("Starting synchronization from block height: %d", bootstrapBlockHeight)
+		return uint64(bootstrapBlockHeight), nil // Return BLOCKHEIGHT as starting height
+	}
+
+	// If BLOCKHEIGHT is not set, get the last processed height from the database
+	lastProcessedHeight, err := getLatestBlockHeightFromDB()
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to getLatestBlockHeightFromDB")
+		return 0, err // Return 0 and the error if fetching fails
+	}
+	return lastProcessedHeight, nil
+}
+
 // Generates the block heights to process in an infinite loop
-func generateBlocksLoop(ctx context.Context, signalChan <-chan os.Signal, heightsChan chan<- uint64, exitWhenCaughtUp bool) {
+func generateBlocksLoop(ctx context.Context, signalChan <-chan os.Signal, heightsChan chan<- uint64, exitWhenCaughtUp bool, bootstrapBlockHeight int64) {
 	for {
-		lastProcessedHeight, err := getLatestBlockHeightFromDB()
+		// Get the starting height
+		startingHeight, err := getStartingHeight(bootstrapBlockHeight)
 		if err != nil {
-			log.Error().Err(err).Msg("Failed to getLatestBlockHeightFromDB")
+			log.Error().Err(err).Msg("Error getting starting height, exiting...")
+			return // Exit if there's an error
 		}
 		chainLatestHeight, err := getLatestHeight()
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to getLatestHeight from chain")
 		}
-		log.Info().Msgf("Processing heights from %d to %d", lastProcessedHeight, chainLatestHeight)
+		log.Info().Msgf("Processing heights from %d to %d", startingHeight, chainLatestHeight)
 		// Emit heights to process into channel
-		for w := lastProcessedHeight; w <= chainLatestHeight; w++ {
+		for w := startingHeight; w <= chainLatestHeight; w++ {
 			select {
 			case <-signalChan:
 				log.Info().Msg("Shutdown signal received, exiting...")
@@ -248,11 +271,13 @@ func worker(ctx context.Context, wgBlocks *sync.WaitGroup, heightsChan <-chan ui
 			block, err := fetchBlock(config, height)
 			if err != nil {
 				log.Error().Err(err).Msg("Worker: Failed to fetchBlock block height")
+				continue
 			}
 			log.Info().Msgf("fetchBlock height: %d, len(TXs): %d", height, len(block.Data.Txs))
 			err = writeBlock(config, block)
 			if err != nil {
 				log.Error().Err(err).Msgf("Worker: Failed to writeBlock, height: %d", height)
+				continue
 			}
 
 			log.Info().Msgf("Write height: %d", height)
@@ -260,10 +285,18 @@ func worker(ctx context.Context, wgBlocks *sync.WaitGroup, heightsChan <-chan ui
 			if len(block.Data.Txs) > 0 {
 				log.Info().Msgf("Processing txs at height: %d", height)
 				wgTxs := sync.WaitGroup{}
+				txSemaphore := make(chan struct{}, maxConcurrentTxPerRoutine)
 				for _, encTx := range block.Data.Txs {
+					txSemaphore <- struct{}{} // Acquire a token
 					wgTxs.Add(1)
-					log.Info().Msgf("Processing height: %d, encTx: %s", height, encTx)
-					go processTx(&wgTxs, height, encTx)
+					go func(encTx string) {
+						defer wgTxs.Done()
+						defer func() { <-txSemaphore }()             // Release the token
+						err := processTx(ctx, &wgTxs, height, encTx) // Pass context and wait group
+						if err != nil {
+							log.Error().Err(err).Msgf("Failed to process transaction at height: %d", height)
+						}
+					}(encTx)
 				}
 				wgTxs.Wait()
 			}

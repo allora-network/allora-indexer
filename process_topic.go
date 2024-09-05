@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"strconv"
 
-	"github.com/allora-network/allora-cosmos-pump/types"
+	"github.com/allora-network/allora-indexer/types"
 	"github.com/rs/zerolog/log"
 )
 

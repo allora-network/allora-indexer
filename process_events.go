@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
+
+	"github.com/rs/zerolog/log"
 )
 
 const eventsRPCQuery = "/block_results?height="
@@ -20,6 +23,8 @@ const (
 	NetworkLossEvent EventType = "networkloss"
 	// NoneEvent represents an event that doesn't need processing
 	NoneEvent EventType = "none"
+	// an invalid event type
+	InvalidType EventType = "invalid"
 )
 
 // EventProcessing defines the type of processing needed for an event
@@ -28,12 +33,9 @@ type EventProcessing struct {
 }
 
 var event_whitelist = map[string]EventProcessing{
-	"emissions.v1.EventScoresSet":      {Type: ScoreEvent},
-	"emissions.v1.EventRewardsSettled": {Type: RewardEvent},
-	"emissions.v1.EventNetworkLossSet": {Type: NetworkLossEvent},
-	"emissions.v2.EventScoresSet":      {Type: ScoreEvent},
-	"emissions.v2.EventRewardsSettled": {Type: RewardEvent},
-	"emissions.v2.EventNetworkLossSet": {Type: NetworkLossEvent},
+	"EventScoresSet":      {Type: ScoreEvent},
+	"EventRewardsSettled": {Type: RewardEvent},
+	"EventNetworkLossSet": {Type: NetworkLossEvent},
 }
 
 type BlockResult struct {
@@ -95,18 +97,38 @@ func FetchEventBlockData(config ClientConfig, height uint64) (*BlockResult, erro
 func FilterEvents(events *BlockResult, whitelist map[string]EventProcessing) []Event {
 	var filteredEvents []Event
 	for _, event := range events.Result.FinalizeBlockEvents {
-		if processing, ok := whitelist[event.Type]; ok && processing.Type != NoneEvent {
+		baseType := getBaseEventType(event.Type)
+		if baseType == string(InvalidType) {
+			log.Debug().Str("type", event.Type).Msg("event type %s is invalid")
+
+			continue
+		}
+		if processing, ok := whitelist[baseType]; ok && processing.Type != NoneEvent {
 			filteredEvents = append(filteredEvents, event)
 		}
 	}
 	for _, blockevent := range events.Result.TxsBlockEvents {
 		for _, event := range blockevent.Events {
-			if processing, ok := whitelist[event.Type]; ok && processing.Type != NoneEvent {
+			baseType := getBaseEventType(event.Type)
+			if baseType == string(InvalidType) {
+				log.Debug().Str("type", event.Type).Msg("ERROR: event type %s is invalid")
+				continue
+			}
+			if processing, ok := whitelist[baseType]; ok && processing.Type != NoneEvent {
 				filteredEvents = append(filteredEvents, event)
 			}
 		}
 	}
 	return filteredEvents
+}
+
+// getBaseEventType extracts the base event type without prefix
+func getBaseEventType(eventType string) string {
+	parts := strings.Split(eventType, ".")
+	if len(parts) > 1 {
+		return parts[len(parts)-1] // Return the last part, e.g., "EventScoresSet"
+	}
+	return string(InvalidType) // Return InvalidType for invalid types
 }
 
 // processes the events of a block
