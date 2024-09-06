@@ -32,7 +32,8 @@ Running the Data Pump
 To start the data pump, execute the compiled Go application. It will begin to fetch data from the Allora Chain node and populate the PostgreSQL database with the latest blockchain information.
 
 ```bash
-go run . --node=https://rpc.network:443 -cliApp=allorad --conn=postgres://default:password@localhost:5432/catalog
+go build
+allora-indexer go run . --node=https://rpc.network:443 -cliApp=allorad --conn=postgres://default:password@localhost:5432/catalog
 ```
 
 The application will attempt to catch up from the last block found in the database.
@@ -56,12 +57,25 @@ Flags and Usage
 | `--MODE` | "full" | Operation mode: 'full' for full update, 'dump' to load a dump and exit, 'empty' to create an empty DB and exit |
 | `--RESTORE_PARALLEL_JOBS` | 4 | Number of parallel jobs (workers) to restore the dump |
 | `--EXIT_APP` | false | Exit when the last block is processed. If false, will keep processing new blocks. |
+| `--BOOTSTRAP_BLOCKHEIGHT` | 0 | Start synchronizing on an empty db from this block height - if 0, do not use |
+| `--MAX_CONCURRENT_TX_PROCESSING` | 32 | Number of max concurrent routines to process tx per worker |
+
 
 ## Modes
 
-- **full**: Performs a full update of the blockchain data. It will restore from S3 if the database is empty, then process all blocks up to the latest.
 - **dump**: Simply overwrites the database by loading a dump from S3 and then exits.
-- **empty**: Creates an empty database and exits.
+- **empty**: Creates an empty schema on the defined database and exits.
+- **full**: This is the normal updating operation mode. Performs a full update of the blockchain data. It will restore from S3 if the database is empty, then process all blocks up to the latest.
+  - The regular behaviour is to pick up from the latest block in `block_info` table. However this behaviour can be overridden by several flags. 
+  - **BOOTSTRAP_BLOCKHEIGHT**: If this is set to a number different from 0, it will start from that block. Can be useful after initializing an empty schema with `empty` mode, or just start with a recent block.
+  - Specifying valid S3 credentials and files, will attempt to download such dump if it exists, reload it onto the database and pick up from the last entry on that dump.
+
+## Performance Tuning
+- **WORKERS_NUM**: Number of processor routines running concurrently. 
+- **MAX_CONCURRENT_TX_PROCESSING**: Each processor may span a number of subprocesses to process an event/tx, which is controlled by this env var.
+- Remember - you can configure your max connection in the pg pool by adding `?pool_max_conns=32` to your `CONNECTION`.
+
+
 
 ## Examples
 
@@ -70,22 +84,22 @@ and `CONNECTION` (of the type `postgres://default:password@db:5432/app`) where t
 
 1. Run in full mode with 8 workers, after having restored the latest dump from S3:
    ```
-   ./blockchain-pump --MODE=full --WORKERS_NUM=8
+   ./allora-indexer --MODE=full --WORKERS_NUM=8
    ```
 
 2. Restore the latest dump from S3:
    ```
-   ./blockchain-pump --MODE=dump --S3_FILE_KEY=latest
+   ./allora-indexer --MODE=dump --S3_FILE_KEY=latest
    ```
 
 3. Create an empty database (to examine schema and generate data, useful for testing purposes):
    ```
-   ./blockchain-pump --MODE=empty
+   ./allora-indexer --MODE=empty
    ```
 
 4. Run in full mode and exit when caught up (useful to run as a cron job):
    ```
-   ./blockchain-pump --MODE=full --EXIT_APP=true
+   ./allora-indexer --MODE=full --EXIT_APP=true
    ```
 
 
@@ -95,7 +109,7 @@ Recreation of database
 To recreate the database in the provided docker compose setup, the volume can be removed with the following command:
 ```
 docker compose down
-docker compose volume rm allora-data-pump_postgres_data
+docker compose volume rm allora-indexer_postgres_data
 # In case of error, check the volume name with: docker volume ls 
 
 ```

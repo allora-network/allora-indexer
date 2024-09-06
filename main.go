@@ -82,7 +82,7 @@ func run() error {
 		Bool("EXIT_APP", exitWhenCaughtUp).
 		Int64("BOOTSTRAP_BLOCKHEIGHT", bootstrapBlockHeight).
 		Uint("MAX_CONCURRENT_TX_PROCESSING", maxConcurrentTxPerRoutine).
-		Msg("pump started")
+		Msg("Allora Indexer started")
 
 	// define the commands to execute payloads
 	config = ClientConfig{
