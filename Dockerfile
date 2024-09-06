@@ -34,10 +34,13 @@ RUN apt-get update && apt-get install -y postgresql-client && rm -rf /var/lib/ap
 
 # Detect the architecture and download the appropriate binary
 ARG TARGETARCH="amd64"
-RUN mkdir -p /usr/local/bin/previous/v3 && \
+RUN mkdir -p /usr/local/bin/previous/v2 && \
+    mkdir -p /usr/local/bin/previous/v3 && \
+    curl -L https://github.com/allora-network/allora-chain/releases/download/v0.2.14/allorad_linux_${TARGETARCH} -o /usr/local/bin/previous/v2/allorad; \
     curl -L https://github.com/allora-network/allora-chain/releases/download/v0.3.0/allorad_linux_${TARGETARCH} -o /usr/local/bin/previous/v3/allorad; \
     curl -L https://github.com/allora-network/allora-chain/releases/download/v0.4.0/allorad_linux_${TARGETARCH} -o /usr/local/bin/allorad; \
     chmod -R 777 /usr/local/bin/allorad && \
+    chmod -R 777 /usr/local/bin/previous/v2/allorad && \
     chmod -R 777 /usr/local/bin/previous/v3/allorad
 
 COPY --from=gobuilder /src/allora-indexer /usr/local/bin/allora-indexer

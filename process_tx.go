@@ -30,7 +30,7 @@ func processTx(ctx context.Context, wg *sync.WaitGroup, height uint64, txData st
 
 	// Decode the transaction using the decodeTx function
 	//txMessage, err := ExecuteCommandByKey[types.Tx](config, "decodeTx", txData)
-	txMessage, err := DecodeTx(config, txData)
+	txMessage, err := DecodeTx(config, txData, height)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to execute command")
 		return err
@@ -178,7 +178,7 @@ func insertBulkReputerPayload(blockHeight uint64, messageId uint64, msg types.Ms
 		reputer_nonce_block_height, msg.TopicID,
 	).Scan(&payloadId)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to insert reputer_payload")
+		log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to insert reputer_payload")
 		return err
 	}
 
@@ -189,7 +189,7 @@ func insertBulkReputerPayload(blockHeight uint64, messageId uint64, msg types.Ms
 		request_reputer_nonce_block_height, err := strconv.Atoi(bundle.ValueBundle.ReputerRequestNonce.ReputerNonce.BlockHeight)
 		err = insertAddress("allora", sql.NullString{"", false}, sql.NullString{bundle.Pubkey, true}, "")
 		if err != nil {
-			log.Error().Err(err).Msg("Failed to insert bundle.Pubkey insertAddress")
+			log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to insert bundle.Pubkey insertAddress")
 			return err
 		}
 		err = dbPool.QueryRow(context.Background(), `
@@ -211,11 +211,12 @@ func insertBulkReputerPayload(blockHeight uint64, messageId uint64, msg types.Ms
 			request_reputer_nonce_block_height,
 		).Scan(&bundleId)
 		if err != nil {
-			log.Error().Err(err).Msg("Failed to insert reputer_bundles")
+			log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to insert reputer_bundles")
 			return err
 		}
 		err = insertValueBundle(bundleId, bundle.ValueBundle, TB_BUNDLE_VALUES)
 		if err != nil {
+			log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to insert reputer bundle_values")
 			return err
 		}
 	}
@@ -224,55 +225,52 @@ func insertBulkReputerPayload(blockHeight uint64, messageId uint64, msg types.Ms
 }
 
 func insertReputerPayload(blockHeight uint64, messageId uint64, msg types.MsgInsertReputerPayload) error {
-
-	reputer_nonce_block_height, err := strconv.Atoi(msg.ReputerValueBundle.ValueBundle.ReputerRequestNonce.ReputerNonce.BlockHeight)
-	var payloadId uint64
-	err = dbPool.QueryRow(context.Background(), `
-		INSERT INTO `+TB_REPUTER_PAYLOAD+` (
-			message_height,
-			message_id,
-			sender,
-			reputer_nonce_block_height,
-			topic_id
-		) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-		blockHeight, messageId, msg.Sender,
-		reputer_nonce_block_height, msg.ReputerValueBundle.ValueBundle.TopicID,
-	).Scan(&payloadId)
+	nonce_block_height, err := strconv.Atoi(msg.ReputerValueBundle.ValueBundle.ReputerRequestNonce.ReputerNonce.BlockHeight)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to insert reputer_payload")
+		log.Error().Err(err).Msg("Failed to convert inf.Nonce.BlockHeight to int")
+		return err
+	}
+	topic_id, err := strconv.Atoi(msg.ReputerValueBundle.ValueBundle.TopicID)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to convert inf.TopicID to int")
 		return err
 	}
 
-	var bundleId uint64
-	log.Info().Msgf("Inserting bundle: %v", msg.ReputerValueBundle)
+	// Insert address for the pubkey
 	err = insertAddress("allora", sql.NullString{"", false}, sql.NullString{msg.ReputerValueBundle.Pubkey, true}, "")
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to insert bundle.Pubkey insertAddress")
 		return err
 	}
-	err = dbPool.QueryRow(context.Background(), `
-			INSERT INTO `+TB_REPUTER_BUNDLES+` (
-				reputer_payload_id,
-				pubkey,
-				signature,
-				reputer,
-				topic_id,
-				extra_data,
-				naive_value,
-				combined_value,
-				reputer_request_reputer_nonce
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-		payloadId, sql.NullString{msg.ReputerValueBundle.Pubkey, true}, msg.ReputerValueBundle.Signature, msg.ReputerValueBundle.ValueBundle.Reputer,
-		msg.ReputerValueBundle.ValueBundle.TopicID, msg.ReputerValueBundle.ValueBundle.ExtraData, msg.ReputerValueBundle.ValueBundle.NaiveValue,
-		msg.ReputerValueBundle.ValueBundle.CombinedValue,
-		msg.ReputerValueBundle.ValueBundle.ReputerRequestNonce.ReputerNonce.BlockHeight,
-	).Scan(&bundleId)
+
+	// Insert the reputer payload
+	var payloadId uint64
+	err = dbPool.QueryRow(context.Background(), fmt.Sprintf(
+		`INSERT INTO %s (message_height, message_id, sender, reputer_nonce_block_height, topic_id)
+		VALUES ($1, $2, $3, $4, $5) RETURNING id`, TB_REPUTER_PAYLOAD),
+		blockHeight, messageId, msg.Sender, nonce_block_height, topic_id).Scan(&payloadId)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to insert reputer_bundles")
+		log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to insert reputer_payload")
 		return err
 	}
-	err = insertValueBundle(bundleId, msg.ReputerValueBundle.ValueBundle, TB_BUNDLE_VALUES)
+
+	// Prepare to insert the single value bundle
+	bundle := msg.ReputerValueBundle.ValueBundle
+	_, err = dbPool.Exec(context.Background(), fmt.Sprintf(`
+		INSERT INTO %s (reputer_payload_id, pubkey, signature, reputer, topic_id, extra_data, naive_value, combined_value, reputer_request_reputer_nonce)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`, TB_REPUTER_BUNDLES),
+		payloadId, sql.NullString{msg.ReputerValueBundle.Pubkey, true}, msg.ReputerValueBundle.Signature, bundle.Reputer,
+		bundle.TopicID, bundle.ExtraData, bundle.NaiveValue,
+		bundle.CombinedValue, nonce_block_height)
 	if err != nil {
+		log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to insert reputer_bundles")
+		return err
+	}
+
+	// Insert the value bundle into the value bundle table
+	err = insertValueBundle(payloadId, bundle, TB_BUNDLE_VALUES)
+	if err != nil {
+		log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to insert reputer bundle_values")
 		return err
 	}
 
@@ -285,17 +283,17 @@ func insertBulkWorkerPayload(blockHeight uint64, messageId uint64, inf types.Msg
 
 		nonce_block_height, err := strconv.Atoi(inf.Nonce.BlockHeight)
 		if err != nil {
-			log.Error().Err(err).Msg("Failed to convert inf.Nonce.BlockHeight to int in insertInferenceForecasts")
+			log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to convert inf.Nonce.BlockHeight to int in insertInferenceForecasts")
 			return err
 		}
 		topic_id, err := strconv.Atoi(inf.TopicID)
 		if err != nil {
-			log.Error().Err(err).Msg("Failed to convert inf.TopicID to int in insertInferenceForecasts")
+			log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to convert inf.TopicID to int in insertInferenceForecasts")
 			return err
 		}
 		block_height, err := strconv.Atoi(bundle.InferenceForecastsBundle.Inference.BlockHeight)
 		if err != nil {
-			log.Error().Err(err).Msg("Failed to convert bundle.InferenceForecastsBundle.Inference.BlockHeight to int in insertInferenceForecasts")
+			log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to convert bundle.InferenceForecastsBundle.Inference.BlockHeight to int in insertInferenceForecasts")
 			return err
 		}
 		waitCreation("block_info", "height", strconv.FormatUint(blockHeight, 10))
@@ -317,7 +315,7 @@ func insertWorkerDataBundle(messageId, blockHeight uint64, block_height, topic_i
 
 	inferenceTopicId, err := strconv.Atoi(bundle.InferenceForecastsBundle.Inference.TopicID)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to convert inference TopicId to int in insertMsgFundTopic")
+		log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to convert inference TopicId to int in insertMsgFundTopic")
 		return err
 	}
 	// Insert inference
@@ -339,11 +337,11 @@ func insertWorkerDataBundle(messageId, blockHeight uint64, block_height, topic_i
 			bundle.InferenceForecastsBundle.Inference.Value, bundle.InferenceForecastsBundle.Inference.ExtraData,
 		)
 		if err != nil {
-			log.Error().Err(err).Msg("Failed to insert inferences")
+			log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to insert inferences")
 			return err
 		}
 	} else {
-		log.Error().Err(err).Msg("Failed to convert inference value")
+		log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to convert inference value")
 		return err
 	}
 	// Insert Forecasts
@@ -365,7 +363,7 @@ func insertWorkerDataBundle(messageId, blockHeight uint64, block_height, topic_i
 			bundle.InferenceForecastsBundle.Forecast.Forecaster,
 		).Scan(&forecastId)
 		if err != nil {
-			log.Error().Err(err).Msg("Failed to insert forecasts")
+			log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to insert forecasts")
 			return err
 		}
 		log.Info().Msgf("forecast_id: %d", forecastId)
@@ -379,7 +377,7 @@ func insertWorkerDataBundle(messageId, blockHeight uint64, block_height, topic_i
 				forecastId, forecast.Inferer, forecast.Value,
 			)
 			if err != nil {
-				log.Error().Err(err).Msg("Failed to insert forecast_values")
+				log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to insert forecast_values")
 				return err
 			}
 		}
@@ -396,17 +394,17 @@ func insertWorkerPayload(blockHeight uint64, messageId uint64, inf types.MsgInse
 
 	nonce_block_height, err := strconv.Atoi(inf.WorkerDataBundle.Nonce.BlockHeight)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to convert inf.Nonce.BlockHeight to int in insertInferenceForecasts")
+		log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to convert inf.Nonce.BlockHeight to int in insertInferenceForecasts")
 		return err
 	}
 	topic_id, err := strconv.Atoi(inf.WorkerDataBundle.TopicID)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to convert inf.TopicID to int in insertInferenceForecasts")
+		log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to convert inf.TopicID to int in insertInferenceForecasts")
 		return err
 	}
 	block_height, err := strconv.Atoi(inf.WorkerDataBundle.InferenceForecastsBundle.Inference.BlockHeight)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to convert bundle.InferenceForecastsBundle.Inference.BlockHeight to int in insertInferenceForecasts")
+		log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to convert bundle.InferenceForecastsBundle.Inference.BlockHeight to int in insertInferenceForecasts")
 		return err
 	}
 	waitCreation("block_info", "height", strconv.FormatUint(blockHeight, 10))
@@ -441,13 +439,13 @@ func waitCreation(table string, field string, value string) error {
 func insertMsgRegister(height uint64, messageId uint64, msg types.MsgRegister) error {
 	err := insertAddress("allora", sql.NullString{msg.Sender, true}, sql.NullString{"", false}, "")
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to insert insertMsgRegister insertAddress")
+		log.Error().Err(err).Uint64("block", height).Msg("Failed to insert insertMsgRegister insertAddress")
 		return err
 	}
 
 	topId, err := strconv.Atoi(msg.TopicID)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to convert msg.TopicID to int")
+		log.Error().Err(err).Uint64("block", height).Msg("Failed to convert msg.TopicID to int")
 		return err
 	}
 
@@ -470,7 +468,7 @@ func insertMsgRegister(height uint64, messageId uint64, msg types.MsgRegister) e
 		height, messageId, msg.Sender, topId, msg.Owner, msg.LibP2pKey, msg.IsReputer,
 	)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to insert insertMsgRegister")
+		log.Error().Err(err).Uint64("block", height).Msg("Failed to insert insertMsgRegister")
 		return err
 	}
 	return nil
@@ -500,7 +498,7 @@ func insertAddress(t string, address sql.NullString, pub_key sql.NullString, mem
 func insertMsgFundTopic(height uint64, messageId uint64, msg types.MsgFundTopic) error {
 	topId, err := strconv.Atoi(msg.TopicID)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to convert msg.TopicID to int in insertMsgFundTopic")
+		log.Error().Err(err).Uint64("block", height).Msg("Failed to convert msg.TopicID to int in insertMsgFundTopic")
 		return err
 	}
 
@@ -524,7 +522,7 @@ func insertMsgFundTopic(height uint64, messageId uint64, msg types.MsgFundTopic)
 		height, messageId, msg.Sender, topId, msg.Amount, "uallo",
 	)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to insert insertMsgFundTopic")
+		log.Error().Err(err).Uint64("block", height).Msg("Failed to insert insertMsgFundTopic")
 		return err
 	}
 	return nil
@@ -533,12 +531,12 @@ func insertMsgSend(height uint64, messageId uint64, msg types.MsgSend) error {
 
 	err := insertAddress("allora", sql.NullString{msg.FromAddress, true}, sql.NullString{"", false}, "")
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to insert insertMsgSend insertAddress")
+		log.Error().Err(err).Uint64("block", height).Msg("Failed to insert insertMsgSend insertAddress")
 		return err
 	}
 	err = insertAddress("allora", sql.NullString{msg.ToAddress, true}, sql.NullString{"", false}, "")
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to insert insertMsgSend insertAddress")
+		log.Error().Err(err).Uint64("block", height).Msg("Failed to insert insertMsgSend insertAddress")
 		return err
 	}
 	_, err = dbPool.Exec(context.Background(), `
