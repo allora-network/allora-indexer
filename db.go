@@ -800,7 +800,7 @@ func insertValueBundle(
 		}
 	}
 	//Insert ForecasterValues
-	for _, val := range valueBundle.InfererValues {
+	for _, val := range valueBundle.ForecasterValues {
 		_, err := dbPool.Exec(context.Background(), `
 				INSERT INTO `+tableName+` (
 					bundle_id,
