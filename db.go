@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/allora-network/allora-cosmos-pump/types"
+	"github.com/allora-network/allora-indexer/types"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
@@ -552,205 +552,293 @@ type EventRecord struct {
 	Data   json.RawMessage
 }
 
+func isEventType(eventType, prefix, suffix string) bool {
+	return strings.HasPrefix(eventType, prefix) && strings.HasSuffix(eventType, suffix)
+}
+
+// isScoreEvent checks if the event is a score event based on its type.
+func isScoreEvent(event EventRecord) bool {
+	return isEventType(event.Type, "emissions.v", "EventScoresSet")
+}
+
+// isRewardEvent checks if the event is a reward event based on its type.
+func isRewardEvent(event EventRecord) bool {
+	return isEventType(event.Type, "emissions.v", "EventRewardsSettled")
+}
+
+// isNetworkLossEvent checks if the event is a network loss event based on its type.
+func isNetworkLossEvent(event EventRecord) bool {
+	return isEventType(event.Type, "emissions.v", "EventNetworkLossSet")
+}
+
 func insertEvents(events []EventRecord) error {
-	log.Debug().Int("events", len(events)).Msg("inserting events")
+	var scoreEvents []EventRecord
+	var rewardEvents []EventRecord
+	var networkLossEvents []EventRecord
+
 	for _, event := range events {
-		data, err := json.Marshal(event.Data)
-		if err != nil {
-			return err
-		}
-		var dataHash = hash(string(data))
-		_, err = dbPool.Exec(context.Background(), `
-			INSERT INTO `+TB_EVENTS+` (height, type, sender, data, hash) VALUES ($1, $2, $3, $4, $5)
-			ON CONFLICT (height, hash, type) DO NOTHING`,
-			event.Height, event.Type, event.Sender, string(data), dataHash)
-		if err != nil {
-			return fmt.Errorf("event insert failed: %v", err)
-		}
-
-		// Additional handling for scores and rewards
-		switch event.Type {
-		case "emissions.v1.EventScoresSet", "emissions.v2.EventScoresSet":
-			err = insertScore(event)
-		case "emissions.v1.EventRewardsSettled", "emissions.v2.EventRewardsSettled":
-			err = insertReward(event)
-		case "emissions.v1.EventNetworkLossSet", "emissions.v2.EventNetworkLossSet":
-			err = insertNetworkLoss(event)
-		default:
-			log.Info().Str("Event type", event.Type).Msg("skipping event type ")
-			continue
-		}
-
-		if err != nil {
-			return err
+		// Determine the type of event and accumulate accordingly
+		if isScoreEvent(event) { // Function to check if it's a score event
+			scoreEvents = append(scoreEvents, event)
+		} else if isRewardEvent(event) { // Function to check if it's a reward event
+			rewardEvents = append(rewardEvents, event)
+		} else if isNetworkLossEvent(event) { // Function to check if it's a network loss event
+			networkLossEvents = append(networkLossEvents, event)
 		}
 	}
+
+	// Insert scores if any
+	if len(scoreEvents) > 0 {
+		err := insertScore(scoreEvents)
+		if err != nil {
+			return fmt.Errorf("failed to insert scores: %w", err)
+		}
+	}
+
+	// Insert rewards if any
+	if len(rewardEvents) > 0 {
+		err := insertReward(rewardEvents)
+		if err != nil {
+			return fmt.Errorf("failed to insert rewards: %w", err)
+		}
+	}
+
+	// Insert network losses if any
+	if len(networkLossEvents) > 0 {
+		err := insertNetworkLoss(networkLossEvents)
+		if err != nil {
+			return fmt.Errorf("failed to insert network losses: %w", err)
+		}
+	}
+
 	return nil
 }
 
-func insertScore(event EventRecord) error {
-	log.Info().Interface("Event score", event).Msg("inserting event score ")
-	var attributes []Attribute
-	err := json.Unmarshal(event.Data, &attributes)
-	if err != nil {
-		return err
-	}
+func insertScore(events []EventRecord) error {
+	log.Info().Msg("Inserting scores in batch")
+	var insertStatements []string
+	var values []interface{}
 
-	var topicID int
-	var actorType string
-	var addresses []string
-	var scores []big.Float
-	var block_height int
+	placeholderCounter := 1 // Placeholder index starts at 1 in PostgreSQL
 
-	for _, attr := range attributes {
-		switch attr.Key {
-		case "topic_id":
-			cleanedValue := strings.Trim(attr.Value, "\"")
-			topicID, err = strconv.Atoi(cleanedValue)
-			if err != nil {
-				return err
+	for _, event := range events {
+		log.Trace().Interface("Event score", event).Msg("Processing event score")
+		var attributes []Attribute
+		err := json.Unmarshal(event.Data, &attributes)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal event data: %w", err)
+		}
+
+		var topicID int
+		var actorType string
+		var addresses []string
+		var scores []big.Float
+		var blockHeight int
+
+		for _, attr := range attributes {
+			switch attr.Key {
+			case "topic_id":
+				cleanedValue := strings.Trim(attr.Value, "\"")
+				topicID, err = strconv.Atoi(cleanedValue)
+				if err != nil {
+					return fmt.Errorf("failed to convert topic_id to int: %w", err)
+				}
+			case "actor_type":
+				actorType = strings.Trim(attr.Value, "\"")
+			case "block_height":
+				cleanedValue := strings.Trim(attr.Value, "\"")
+				blockHeight, err = strconv.Atoi(cleanedValue)
+				if err != nil {
+					return fmt.Errorf("failed to convert block_height to int: %w", err)
+				}
+			case "addresses":
+				err = json.Unmarshal([]byte(attr.Value), &addresses)
+				if err != nil {
+					return fmt.Errorf("failed to unmarshal addresses: %w", err)
+				}
+			case "scores":
+				var rawScores []string
+				err = json.Unmarshal([]byte(attr.Value), &rawScores)
+				if err != nil {
+					return fmt.Errorf("failed to unmarshal scores: %w", err)
+				}
+
+				for _, rawScore := range rawScores {
+					rawScoreClean := strings.Trim(rawScore, "\"")
+					if isInvalidNumericValue(rawScoreClean) {
+						log.Error().Str("rawScore", rawScore).Msg("Failed to convert score to big.Float")
+						return fmt.Errorf("Invalid Score: %s", rawScoreClean)
+					} else {
+						score := new(big.Float)
+						score, ok := score.SetString(rawScoreClean)
+						if !ok {
+							log.Error().Str("rawScore", rawScore).Msg("Failed to convert score to big.Float")
+							return fmt.Errorf("Invalid Score: %s", rawScoreClean)
+						}
+						scores = append(scores, *score)
+					}
+				}
 			}
-		case "actor_type":
-			actorType = strings.Trim(attr.Value, "\"")
-		case "block_height":
-			cleanedValue := strings.Trim(attr.Value, "\"")
-			block_height, err = strconv.Atoi(cleanedValue)
-			if err != nil {
-				return err
-			}
-		case "addresses":
-			err = json.Unmarshal([]byte(attr.Value), &addresses)
-			if err != nil {
-				return err
-			}
-		case "scores":
-			err = json.Unmarshal([]byte(attr.Value), &scores)
-			if err != nil {
-				return err
-			}
+		}
+
+		if len(addresses) != len(scores) {
+			return fmt.Errorf("mismatch in length of addresses and scores")
+		}
+
+		for i := range addresses {
+			// Generate the placeholders for this row
+			newStmt := fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d)", placeholderCounter, placeholderCounter+1, placeholderCounter+2, placeholderCounter+3, placeholderCounter+4, placeholderCounter+5)
+			insertStatements = append(insertStatements, newStmt)
+			scoreValue := scores[i].Text('f', -1)
+			values = append(values, event.Height, blockHeight, topicID, actorType, addresses[i], scoreValue)
+			placeholderCounter += 6 // Increase counter for next row
 		}
 	}
 
-	if len(addresses) != len(scores) {
-		return fmt.Errorf("mismatch in length of addresses and scores")
-	}
-
-	for i := range addresses {
-		_, err = dbPool.Exec(context.Background(), `
-			INSERT INTO `+TB_SCORES+` (height_tx, height, topic_id, type, address, value) VALUES ($1, $2, $3, $4, $5, $6) 
-			ON CONFLICT (height, topic_id, type, address) DO NOTHING`,
-			event.Height, block_height, topicID, actorType, addresses[i], scores[i].Text('f', -1))
+	if len(insertStatements) > 0 {
+		sqlStatement := fmt.Sprintf(`
+			INSERT INTO %s (height_tx, height, topic_id, type, address, value) 
+			VALUES %s`, TB_SCORES, strings.Join(insertStatements, ","))
+		log.Trace().Str("Event - Score SQL Statement", sqlStatement).Interface("Values", values).Msg("Executing batch insert for scores")
+		_, err := dbPool.Exec(context.Background(), sqlStatement, values...)
 		if err != nil {
 			return fmt.Errorf("score insert failed: %v", err)
 		}
+	} else {
+		log.Info().Msg("No scores data to insert")
 	}
+
 	return nil
 }
 
-func insertReward(event EventRecord) error {
-	log.Info().Interface("Event reward", event).Msg("inserting event reward ")
-	var attributes []Attribute
-	err := json.Unmarshal(event.Data, &attributes)
-	if err != nil {
-		return err
-	}
+func insertReward(events []EventRecord) error {
+	log.Info().Msg("Inserting rewards in batch")
+	var insertStatements []string
+	var values []interface{}
+	placeholderCounter := 1 // Placeholder index starts at 1 in PostgreSQL
 
-	var topicID int
-	var rewardType string
-	var addresses []string
-	var rewards []big.Float
-	var block_height int
-
-	for _, attr := range attributes {
-		switch attr.Key {
-		case "topic_id":
-			cleanedValue := strings.Trim(attr.Value, "\"")
-			topicID, err = strconv.Atoi(cleanedValue)
-			if err != nil {
-				return err
-			}
-		case "reward_type":
-			rewardType = strings.Trim(attr.Value, "\"")
-		case "block_height":
-			cleanedValue := strings.Trim(attr.Value, "\"")
-			block_height, err = strconv.Atoi(cleanedValue)
-			if err != nil {
-				return err
-			}
-		case "addresses":
-			err = json.Unmarshal([]byte(attr.Value), &addresses)
-			if err != nil {
-				return err
-			}
-		case "rewards":
-			err = json.Unmarshal([]byte(attr.Value), &rewards)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	if len(addresses) != len(rewards) {
-		return fmt.Errorf("mismatch in length of addresses and rewards")
-	}
-
-	for i := range addresses {
-		_, err = dbPool.Exec(context.Background(),
-			`INSERT INTO `+TB_REWARDS+` (height_tx, height, topic_id, type, address, value) VALUES ($1, $2, $3, $4, $5, $6) 
-			ON CONFLICT (height, topic_id, type, address) DO NOTHING`,
-			event.Height, block_height, topicID, rewardType, addresses[i], rewards[i].Text('f', -1))
+	for _, event := range events {
+		log.Trace().Interface("Event reward", event).Msg("Processing event reward")
+		var attributes []Attribute
+		err := json.Unmarshal(event.Data, &attributes)
 		if err != nil {
-			return fmt.Errorf("reward insert failed: %v", err)
+			return fmt.Errorf("failed to unmarshal event data: %w", err)
+		}
+
+		var topicID int
+		var rewardType string
+		var addresses []string
+		var rewards []big.Float
+		var blockHeight int
+
+		for _, attr := range attributes {
+			switch attr.Key {
+			case "topic_id":
+				cleanedValue := strings.Trim(attr.Value, "\"")
+				topicID, err = strconv.Atoi(cleanedValue)
+				if err != nil {
+					return fmt.Errorf("failed to convert topic_id to int: %w", err)
+				}
+			case "actor_type":
+				rewardType = strings.Trim(attr.Value, "\"")
+			case "block_height":
+				cleanedValue := strings.Trim(attr.Value, "\"")
+				blockHeight, err = strconv.Atoi(cleanedValue)
+				if err != nil {
+					return fmt.Errorf("failed to convert block_height to int: %w", err)
+				}
+			case "addresses":
+				err = json.Unmarshal([]byte(attr.Value), &addresses)
+				if err != nil {
+					return fmt.Errorf("failed to unmarshal addresses: %w", err)
+				}
+			case "rewards":
+				err = json.Unmarshal([]byte(attr.Value), &rewards)
+				if err != nil {
+					return fmt.Errorf("failed to unmarshal rewards: %w", err)
+				}
+			}
+		}
+
+		if len(addresses) != len(rewards) {
+			return fmt.Errorf("mismatch in length of addresses and rewards")
+		}
+
+		for i := range addresses {
+			// Generate the placeholders for this row
+			newStmt := fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d)", placeholderCounter, placeholderCounter+1, placeholderCounter+2, placeholderCounter+3, placeholderCounter+4, placeholderCounter+5)
+			insertStatements = append(insertStatements, newStmt)
+			values = append(values, event.Height, blockHeight, topicID, rewardType, addresses[i], rewards[i].Text('f', -1))
+			placeholderCounter += 6 // Increase counter for next row
 		}
 	}
+
+	if len(insertStatements) > 0 {
+		sqlStatement := fmt.Sprintf(`
+			INSERT INTO %s (height_tx, height, topic_id, type, address, value) 
+			VALUES %s`, TB_REWARDS, strings.Join(insertStatements, ","))
+
+		log.Trace().Str("Event - Reward SQL Statement", sqlStatement).Interface("Values", values).Msg("Executing batch insert for scores")
+
+		_, err := dbPool.Exec(context.Background(), sqlStatement, values...)
+		if err != nil {
+			return fmt.Errorf("rewards insert failed: %v", err)
+		}
+	} else {
+		log.Info().Msg("No rewards data to insert")
+	}
+
 	return nil
 }
 
-func insertNetworkLoss(event EventRecord) error {
-	log.Info().Interface("Event network loss", event).Msg("inserting event network loss ")
-	var attributes []Attribute
-	err := json.Unmarshal(event.Data, &attributes)
-	if err != nil {
-		return err
-	}
+// func insertNetworkLoss(event EventRecord) error {
+func insertNetworkLoss(events []EventRecord) error {
+	for _, event := range events {
+		log.Debug().Interface("Event network loss", event).Msg("inserting event network loss ")
+		var attributes []Attribute
+		err := json.Unmarshal(event.Data, &attributes)
+		if err != nil {
+			return err
+		}
 
-	var topicID int
-	var block_height int
-	var valueBundle types.MsgValueBundle
+		var topicID int
+		var block_height int
+		var valueBundle types.MsgValueBundle
 
-	for _, attr := range attributes {
-		cleanedValue := strings.Trim(attr.Value, "\"")
-		switch attr.Key {
-		case "topic_id":
-			topicID, err = strconv.Atoi(cleanedValue)
-			if err != nil {
-				return err
-			}
-		case "block_height":
-			block_height, err = strconv.Atoi(cleanedValue)
-			if err != nil {
-				return err
-			}
-		case "value_bundle":
-			err = json.Unmarshal([]byte(cleanedValue), &valueBundle)
-			if err != nil {
-				return err
+		for _, attr := range attributes {
+			cleanedValue := strings.Trim(attr.Value, "\"")
+			switch attr.Key {
+			case "topic_id":
+				topicID, err = strconv.Atoi(cleanedValue)
+				if err != nil {
+					return err
+				}
+			case "block_height":
+				block_height, err = strconv.Atoi(cleanedValue)
+				if err != nil {
+					return err
+				}
+			case "value_bundle":
+				err = json.Unmarshal([]byte(cleanedValue), &valueBundle)
+				if err != nil {
+					return err
+				}
 			}
 		}
+
+		var bundleId uint64
+		err = dbPool.QueryRow(context.Background(), `
+				INSERT INTO `+TB_NETWORKLOSSES+` (height_tx, height, topic_id, naive_value, combined_value) VALUES ($1, $2, $3, $4, $5)
+				ON CONFLICT (height_tx, height, topic_id) DO NOTHING returning id`,
+			event.Height, block_height, topicID, valueBundle.NaiveValue, valueBundle.CombinedValue).Scan(&bundleId)
+
+		if err != nil {
+			return fmt.Errorf("network loss event insert failed: %v", err)
+		}
+
+		log.Debug().Msgf("Inserting NetworkLoss bundle: %d, %v", bundleId, valueBundle)
+		insertValueBundle(bundleId, valueBundle, TB_NETWORKLOSS_BUNDLE_VALUES)
 	}
-
-	var bundleId uint64
-	err = dbPool.QueryRow(context.Background(), `
-			INSERT INTO `+TB_NETWORKLOSSES+` (height_tx, height, topic_id, naive_value, combined_value) VALUES ($1, $2, $3, $4, $5)
-			ON CONFLICT (height_tx, height, topic_id) DO NOTHING returning id`,
-		event.Height, block_height, topicID, valueBundle.NaiveValue, valueBundle.CombinedValue).Scan(&bundleId)
-
-	if err != nil {
-		return fmt.Errorf("network loss event insert failed: %v", err)
-	}
-
-	log.Info().Msgf("Inserting NetworkLoss bundle: %d, %v", bundleId, valueBundle)
-	insertValueBundle(bundleId, valueBundle, TB_NETWORKLOSS_BUNDLE_VALUES)
 	return nil
 }
 
@@ -801,7 +889,7 @@ func insertValueBundle(
 		}
 	}
 	//Insert ForecasterValues
-	for _, val := range valueBundle.InfererValues {
+	for _, val := range valueBundle.ForecasterValues {
 		_, err := dbPool.Exec(context.Background(), `
 				INSERT INTO `+tableName+` (
 					bundle_id,
@@ -894,7 +982,7 @@ func insertValueBundle(
 
 func addUniqueConstraints() error {
 	_, err := dbPool.Exec(context.Background(), `
-				ALTER TABLE `+TB_MESSAGES+` drop CONSTRAINT messages_height_data`,
+				ALTER TABLE `+TB_MESSAGES+` drop CONSTRAINT IF EXISTS messages_height_data`,
 	)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to remove constraint unique from message")
@@ -909,7 +997,7 @@ func addUniqueConstraints() error {
 	}
 
 	_, err = dbPool.Exec(context.Background(), `
-				ALTER TABLE `+TB_EVENTS+` drop CONSTRAINT events_height_data`,
+				ALTER TABLE `+TB_EVENTS+` drop CONSTRAINT IF EXISTS events_height_data`,
 	)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to remove constraint unique from events")
@@ -930,4 +1018,8 @@ func hash(s string) uint32 {
 	h := fnv.New32a()
 	h.Write([]byte(s))
 	return h.Sum32()
+}
+
+func isInvalidNumericValue(value string) bool {
+	return strings.Contains(strings.ToLower(value), "infinity") || strings.Contains(strings.ToLower(value), "nan")
 }

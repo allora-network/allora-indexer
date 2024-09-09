@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # Define the application name
-APP_NAME="allora-cosmos-pump"
+APP_NAME="allora-indexer"
 
 # Check for a version argument, otherwise set a default version
 VERSION=${1:-"v0.0.1"}
 
 # Define the base URL using the specified or default version
-BASE_URL="https://github.com/allora-network/allora-cosmos-pump/releases/download/$VERSION"
+BASE_URL="https://github.com/allora-network/allora-indexer/releases/download/$VERSION"
 
 # Determine the operating system and architecture
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')

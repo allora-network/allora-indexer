@@ -7,10 +7,9 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/allora-network/allora-cosmos-pump/types"
+	"github.com/allora-network/allora-indexer/types"
 	"github.com/rs/zerolog/log"
 )
-
 
 func getLatestHeight() (uint64, error) {
 	blockInfo, err := ExecuteCommandByKey[types.BlockInfo](config, "latestBlock")
@@ -27,7 +26,7 @@ func getLatestHeight() (uint64, error) {
 	return uint64(latestHeight), nil
 }
 
-func fetchBlock(config ClientConfig, height uint64) (types.BlockQuery, error){
+func fetchBlock(config ClientConfig, height uint64) (types.BlockQuery, error) {
 	// Convert height to string
 	heightStr := strconv.FormatUint(height, 10)
 
@@ -59,7 +58,7 @@ func fetchBlock(config ClientConfig, height uint64) (types.BlockQuery, error){
 	// processBlockQuery(config, blockQuery)
 }
 
-func writeBlock(config ClientConfig, blockQuery types.BlockQuery) (error) {
+func writeBlock(config ClientConfig, blockQuery types.BlockQuery) error {
 	// Process the block information (e.g., insert into database)
 	// Assuming `insertBlockInfo` is defined elsewhere
 	height, err := strconv.ParseUint(blockQuery.Header.Height, 10, 64)
