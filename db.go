@@ -622,7 +622,7 @@ func insertScore(events []EventRecord) error {
 	placeholderCounter := 1 // Placeholder index starts at 1 in PostgreSQL
 
 	for _, event := range events {
-		log.Info().Interface("Event score", event).Msg("Processing event score")
+		log.Trace().Interface("Event score", event).Msg("Processing event score")
 		var attributes []Attribute
 		err := json.Unmarshal(event.Data, &attributes)
 		if err != nil {
@@ -699,9 +699,7 @@ func insertScore(events []EventRecord) error {
 		sqlStatement := fmt.Sprintf(`
 			INSERT INTO %s (height_tx, height, topic_id, type, address, value) 
 			VALUES %s`, TB_SCORES, strings.Join(insertStatements, ","))
-
-		log.Info().Str("Event - Score SQL Statement", sqlStatement).Interface("Values", values).Msg("Executing batch insert for scores")
-
+		log.Trace().Str("Event - Score SQL Statement", sqlStatement).Interface("Values", values).Msg("Executing batch insert for scores")
 		_, err := dbPool.Exec(context.Background(), sqlStatement, values...)
 		if err != nil {
 			return fmt.Errorf("score insert failed: %v", err)
@@ -720,7 +718,7 @@ func insertReward(events []EventRecord) error {
 	placeholderCounter := 1 // Placeholder index starts at 1 in PostgreSQL
 
 	for _, event := range events {
-		log.Info().Interface("Event reward", event).Msg("Processing event reward")
+		log.Trace().Interface("Event reward", event).Msg("Processing event reward")
 		var attributes []Attribute
 		err := json.Unmarshal(event.Data, &attributes)
 		if err != nil {
@@ -741,7 +739,7 @@ func insertReward(events []EventRecord) error {
 				if err != nil {
 					return fmt.Errorf("failed to convert topic_id to int: %w", err)
 				}
-			case "reward_type":
+			case "actor_type":
 				rewardType = strings.Trim(attr.Value, "\"")
 			case "block_height":
 				cleanedValue := strings.Trim(attr.Value, "\"")
@@ -780,7 +778,7 @@ func insertReward(events []EventRecord) error {
 			INSERT INTO %s (height_tx, height, topic_id, type, address, value) 
 			VALUES %s`, TB_REWARDS, strings.Join(insertStatements, ","))
 
-		log.Info().Str("Event - Reward SQL Statement", sqlStatement).Interface("Values", values).Msg("Executing batch insert for scores")
+		log.Trace().Str("Event - Reward SQL Statement", sqlStatement).Interface("Values", values).Msg("Executing batch insert for scores")
 
 		_, err := dbPool.Exec(context.Background(), sqlStatement, values...)
 		if err != nil {
@@ -796,7 +794,7 @@ func insertReward(events []EventRecord) error {
 // func insertNetworkLoss(event EventRecord) error {
 func insertNetworkLoss(events []EventRecord) error {
 	for _, event := range events {
-		log.Info().Interface("Event network loss", event).Msg("inserting event network loss ")
+		log.Debug().Interface("Event network loss", event).Msg("inserting event network loss ")
 		var attributes []Attribute
 		err := json.Unmarshal(event.Data, &attributes)
 		if err != nil {
@@ -838,7 +836,7 @@ func insertNetworkLoss(events []EventRecord) error {
 			return fmt.Errorf("network loss event insert failed: %v", err)
 		}
 
-		log.Info().Msgf("Inserting NetworkLoss bundle: %d, %v", bundleId, valueBundle)
+		log.Debug().Msgf("Inserting NetworkLoss bundle: %d, %v", bundleId, valueBundle)
 		insertValueBundle(bundleId, valueBundle, TB_NETWORKLOSS_BUNDLE_VALUES)
 	}
 	return nil
