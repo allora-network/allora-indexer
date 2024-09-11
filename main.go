@@ -58,7 +58,7 @@ func run() error {
 	pflag.UintVar(&workersNum, "WORKERS_NUM", 1, "Number of workers to process blocks concurrently")
 	pflag.StringVar(&nodeFlag, "NODE", "https://allora-rpc.testnet.allora.network/", "Node address") //# https://default-node-address:443",
 	pflag.StringVar(&cliAppFlag, "CLIAPP", "allorad", "CLI app to execute commands")
-	pflag.StringVar(&connectionFlag, "CONNECTION", "postgres://pump:pump@localhost:5433/pump", "Database connection string")
+	pflag.StringVar(&connectionFlag, "CONNECTION", "postgres://app:app@localhost:5433/app", "Database connection string")
 	pflag.StringVar(&awsAccessKey, "AWS_ACCESS_KEY", "", "AWS access key")
 	pflag.StringVar(&awsSecretKey, "AWS_SECURITY_KEY", "", "AWS security key")
 	pflag.StringVar(&s3BucketName, "S3_BUCKET_NAME", "allora-testnet-1-indexer-backups", "AWS s3 bucket name")
@@ -75,7 +75,6 @@ func run() error {
 		Uint("WORKERS_NUM", workersNum).
 		Str("NODE", nodeFlag).
 		Str("CLIAPP", cliAppFlag).
-		Str("CONNECTION", connectionFlag).
 		Str("S3_BUCKET_NAME", s3BucketName).
 		Str("S3_FILE_KEY", s3FileKey).
 		Str("MODE", mode).

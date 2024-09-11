@@ -1,44 +1,44 @@
- Allora Chain Data Pump
+ Allora Indexer
 ======================
 
 Overview
 --------
 
-This project serves as a data pump for the Allora Chain, a blockchain built on the Cosmos network. It extracts and stores blockchain data into a PostgreSQL database, utilizing the `allorad` application for data retrieval and the Go programming language for backend operations.
+This project serves as a data pump for the Allora Network blockchain. It extracts and stores blockchain data into a PostgreSQL database, utilizing the `allorad` application and RPC endpoints for data retrieval and the Go programming language for backend operations.
 
 Features
 --------
 
 *   Retrieval of the latest block and consensus parameters from the Allora Chain using the `allorad` application.
+*   Retrieval of events via RPC endpoint
 *   Storage of blockchain data in a PostgreSQL database for historical analysis, monitoring, and reporting.
 *   Modular Go codebase designed for easy maintenance, scalability, and integration with other systems.
 *   Efficient data handling and management through the `pgx` PostgreSQL driver.
+
 
 Prerequisites
 -------------
 
 *   Go (version 1.21 or later) for backend development.
 *   PostgreSQL (version 10 or later) for database management.
-*   The `allorad` command-line application for interacting with the Allora Chain.
+*   The `allorad` command-line application for interacting with the Allora Chain aligned with the chain version.
 
 Setup and Configuration
 -----------------------
 
-Ensure the `allorad` application is configured correctly to connect to the Allora Chain node. The PostgreSQL database should be set up with the necessary tables and permissions for data storage. Modify the Go application's configuration to point to the correct database and node endpoints.
+Ensure the `allorad` application is configured correctly to connect to the Allora Chain node, and that its version is compliant with the Allora Network to be connected to. The PostgreSQL database should be set up with the necessary tables and permissions for data storage. Modify the Go application's configuration to point to the correct database and node endpoints.
 
-Running the Data Pump
+Running the Indexer
 ---------------------
 
-To start the data pump, execute the compiled Go application. It will begin to fetch data from the Allora Chain node and populate the PostgreSQL database with the latest blockchain information.
+To start the indexer, execute the compiled Go application. It will begin to fetch data from the Allora Chain node and populate the PostgreSQL database with the latest blockchain information.
 
 ```bash
 go build
-allora-indexer go run . --node=https://rpc.network:443 -cliApp=allorad --conn=postgres://default:password@localhost:5432/catalog
+allora-indexer go run . --node=https://rpc.network:443 -cliApp=allorad --conn=postgres://default:password@localhost:5432/catalog ...
 ```
 
 The application will attempt to catch up from the last block found in the database.
-However, it is possible to parse only specific events by passing the flag: `--blocks=123,456,567`. It will override the default catch-up mechanism - it will only attempt to process those blocks and add them to the database. The use of this flag is expected in testing or backfilling.
-
 
 
 Flags and Usage
