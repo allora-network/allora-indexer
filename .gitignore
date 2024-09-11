@@ -1,7 +1,6 @@
 data/
 postgres_data/
 allora-indexer
-pump
 allorad
 vendor/
 .env
@@ -10,4 +9,4 @@ allorad_linux_amd64
 allorad_linux_amd64__no_token
 app-events.backup
 app.backup
-
+*.log

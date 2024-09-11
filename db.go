@@ -623,7 +623,7 @@ func insertEvents(events []EventRecord) error {
 	if len(scoreEvents) > 0 {
 		err := insertScore(scoreEvents)
 		if err != nil {
-			return fmt.Errorf("failed to insert scores: %w", err)
+			log.Error().Err(err).Msg("failed to insert scores")
 		}
 	}
 
@@ -631,7 +631,7 @@ func insertEvents(events []EventRecord) error {
 	if len(rewardEvents) > 0 {
 		err := insertReward(rewardEvents)
 		if err != nil {
-			return fmt.Errorf("failed to insert rewards: %w", err)
+			log.Error().Err(err).Msg("failed to insert rewards")
 		}
 	}
 
@@ -639,7 +639,7 @@ func insertEvents(events []EventRecord) error {
 	if len(networkLossEvents) > 0 {
 		err := insertNetworkLoss(networkLossEvents)
 		if err != nil {
-			return fmt.Errorf("failed to insert network losses: %w", err)
+			log.Error().Err(err).Msg("failed to insert network losses")
 		}
 	}
 
