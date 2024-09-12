@@ -575,6 +575,10 @@ func insertEvents(events []EventRecord) error {
 	var scoreEvents []EventRecord
 	var rewardEvents []EventRecord
 	var networkLossEvents []EventRecord
+	// For inserting events in batch:
+	var insertStatements []string
+	var values []interface{}
+	placeholderCounter := 1 // Placeholder index starts at 1 in PostgreSQL
 
 	for _, event := range events {
 		// Determine the type of event and accumulate accordingly
@@ -584,14 +588,42 @@ func insertEvents(events []EventRecord) error {
 			rewardEvents = append(rewardEvents, event)
 		} else if isNetworkLossEvent(event) { // Function to check if it's a network loss event
 			networkLossEvents = append(networkLossEvents, event)
+		} else {
+			log.Info().Msg("Unrecognized event, ignoring")
+			continue
 		}
+
+		// Prepare data for batch insert into TB_EVENTS
+		dataHash := hash(string(event.Data))
+		newStmt := fmt.Sprintf("($%d, $%d, $%d, $%d, $%d)", placeholderCounter, placeholderCounter+1, placeholderCounter+2, placeholderCounter+3, placeholderCounter+4)
+		insertStatements = append(insertStatements, newStmt)
+		values = append(values, event.Height, event.Type, event.Sender, string(event.Data), dataHash)
+		placeholderCounter += 5 // Increase counter for next row
+	}
+
+	// Batch insert into TB_EVENTS
+	if len(insertStatements) > 0 {
+		sqlStatement := fmt.Sprintf(`
+				INSERT INTO %s (height, type, sender, data, hash) 
+				VALUES %s
+				ON CONFLICT (height, hash, type) DO NOTHING`, TB_EVENTS, strings.Join(insertStatements, ","))
+
+		// Log the SQL statement and values for debugging
+		log.Debug().Str("SQL Statement", sqlStatement).Interface("Values", values).Msg("Executing batch insert for events")
+
+		_, err := dbPool.Exec(context.Background(), sqlStatement, values...)
+		if err != nil {
+			return fmt.Errorf("event insert failed: %v", err)
+		}
+	} else {
+		log.Info().Msg("No events data to insert")
 	}
 
 	// Insert scores if any
 	if len(scoreEvents) > 0 {
 		err := insertScore(scoreEvents)
 		if err != nil {
-			return fmt.Errorf("failed to insert scores: %w", err)
+			log.Error().Err(err).Msg("failed to insert scores")
 		}
 	}
 
@@ -599,7 +631,7 @@ func insertEvents(events []EventRecord) error {
 	if len(rewardEvents) > 0 {
 		err := insertReward(rewardEvents)
 		if err != nil {
-			return fmt.Errorf("failed to insert rewards: %w", err)
+			log.Error().Err(err).Msg("failed to insert rewards")
 		}
 	}
 
@@ -607,7 +639,7 @@ func insertEvents(events []EventRecord) error {
 	if len(networkLossEvents) > 0 {
 		err := insertNetworkLoss(networkLossEvents)
 		if err != nil {
-			return fmt.Errorf("failed to insert network losses: %w", err)
+			log.Error().Err(err).Msg("failed to insert network losses")
 		}
 	}
 
