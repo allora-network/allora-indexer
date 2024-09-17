@@ -47,7 +47,7 @@ Flags and Usage
 | Flag | Default Value | Description |
 |------|---------------|-------------|
 | `--WORKERS_NUM` | 1 | Number of workers to process blocks concurrently |
-| `--NODE` | "https://allora-rpc.testnet-1.testnet.allora.network/" | Node address for the blockchain |
+| `--NODE` | "https://allora-rpc.testnet.allora.network/" | Node address for the blockchain |
 | `--CLIAPP` | "allorad" | CLI app to execute commands |
 | `--CONNECTION` | "postgres://pump:pump@localhost:5433/pump" | Database connection string |
 | `--AWS_ACCESS_KEY` | "" | AWS access key for S3 access |
