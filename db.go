@@ -71,6 +71,7 @@ const (
 	TB_NETWORKLOSS_BUNDLE_VALUES = "networkloss_bundle_values"
 	TB_EMASCORES                 = "ema_scores"
 	TB_ACTOR_LAST_COMMIT         = "last_commit_values"
+	TB_TOKENOMICS                = "tokenomics"
 )
 
 var dbPool *pgxpool.Pool //*pgx.Conn
@@ -453,7 +454,6 @@ func createEventsTablesSQL() string {
 		is_active BOOLEAN,
 		CONSTRAINT unique_ema_score_entry UNIQUE (topic_id, type, address)
 	);
-
 	CREATE TABLE IF NOT EXISTS ` + TB_ACTOR_LAST_COMMIT + ` (
 		id SERIAL PRIMARY KEY,
 		height_tx BIGINT,
@@ -461,6 +461,14 @@ func createEventsTablesSQL() string {
 		topic_id INT,
 		is_worker BOOLEAN,
 		CONSTRAINT unique_actor_last_commit_entry UNIQUE (topic_id, is_worker)
+	);
+	CREATE TABLE IF NOT EXISTS ` + TB_TOKENOMICS + ` (
+		id SERIAL PRIMARY KEY,
+		height_tx BIGINT,
+		staked_amount NUMERIC(72,18),
+		circulating_supply NUMERIC(72,18),
+		emissions_amount NUMERIC(72,18),
+		ecosystem_mint_amount NUMERIC(72,18)
 	);
 	`
 }
@@ -616,6 +624,10 @@ func isEMAScoreEvent(event EventRecord) bool {
 	return isEventType(event.Type, "emissions.v", "EventEMAScoresSet")
 }
 
+func isTokenomicsEvent(event EventRecord) bool {
+	return isEventType(event.Type, "mint.v", "EventTokenomicsSet")
+}
+
 func insertEvents(events []EventRecord) error {
 	var scoreEvents []EventRecord
 	var rewardEvents []EventRecord
@@ -624,6 +636,7 @@ func insertEvents(events []EventRecord) error {
 	var actorLastCommitEvents []EventRecord
 	var topicRewardEvents []EventRecord
 	var emaScoreEvents []EventRecord
+	var tokenomicsEvents []EventRecord
 	// For inserting events in batch:
 	var insertStatements []string
 	var values []interface{}
@@ -645,6 +658,8 @@ func insertEvents(events []EventRecord) error {
 			topicRewardEvents = append(topicRewardEvents, event) // Function to check if it's a topic reward event
 		} else if isEMAScoreEvent(event) {
 			emaScoreEvents = append(emaScoreEvents, event) // Function to check if it's an ema score event
+		} else if isTokenomicsEvent(event) {
+			tokenomicsEvents = append(tokenomicsEvents, event) // Function to check if it's a tokenomics event
 		} else {
 			log.Info().Msg("Unrecognized event, ignoring")
 			continue
@@ -729,6 +744,14 @@ func insertEvents(events []EventRecord) error {
 		err := insertEMAScore(emaScoreEvents)
 		if err != nil {
 			log.Error().Err(err).Msg("failed to insert ema score")
+		}
+	}
+
+	// Insert tokenomics if any
+	if len(tokenomicsEvents) > 0 {
+		err := insertTokenomics(tokenomicsEvents)
+		if err != nil {
+			log.Error().Err(err).Msg("failed to insert tokenomics")
 		}
 	}
 	return nil
@@ -1223,6 +1246,53 @@ func insertEMAScore(events []EventRecord) error {
 		log.Info().Msg("No scores data to insert")
 	}
 
+	return nil
+}
+
+func insertTokenomics(events []EventRecord) error {
+	log.Info().Msg("Inserting tokenomics")
+	for _, event := range events {
+		log.Trace().Interface("Event tokenomics", event).Msg("Processing tokenomic event")
+		var attributes []Attribute
+		err := json.Unmarshal(event.Data, &attributes)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal event data: %w", err)
+		}
+
+		var stakedTokenAmount = new(big.Float)
+		var circulatingAmount = new(big.Float)
+		var emissionsAmount = new(big.Float)
+		for _, attr := range attributes {
+			switch attr.Key {
+			case "circulating_supply":
+				cleanedValue := strings.Trim(attr.Value, "\"")
+				_, ok := circulatingAmount.SetString(cleanedValue)
+				if !ok {
+					return fmt.Errorf("failed to get circulating supply: %w", err)
+				}
+			case "emissions_amount":
+				cleanedValue := strings.Trim(attr.Value, "\"")
+				_, ok := emissionsAmount.SetString(cleanedValue)
+				if !ok {
+					return fmt.Errorf("failed to get emissions total amount supply: %w", err)
+				}
+			case "staked_token_amount":
+				cleanedValue := strings.Trim(attr.Value, "\"")
+				_, ok := stakedTokenAmount.SetString(cleanedValue)
+				if !ok {
+					return fmt.Errorf("failed to get staked token amount supply: %w", err)
+				}
+			}
+		}
+
+		_, err = dbPool.Exec(context.Background(),
+			`INSERT INTO `+TB_TOKENOMICS+` (height_tx, staked_amount, circulating_supply, emissions_amount) VALUES ($1, $2, $3, $4)`,
+			event.Height, stakedTokenAmount, circulatingAmount, emissionsAmount,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to update topic reward")
+		}
+	}
 	return nil
 }
 func isDataEmpty(table string) (bool, error) {

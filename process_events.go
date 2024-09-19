@@ -29,6 +29,8 @@ const (
 	TopicRewardEvent EventType = "topicReward"
 	// EMAScoreEvent represents a ema score event
 	EMAScoreEvent EventType = "emascore"
+	// TokenomicsEvent represents a ema score event
+	TokenomicsEvent EventType = "tokenomics"
 	// NoneEvent represents an event that doesn't need processing
 	NoneEvent EventType = "none"
 	// an invalid event type
@@ -49,6 +51,7 @@ var event_whitelist = map[string]EventProcessing{
 	"EventReputerLastCommitSet": {Type: ActorLastCommitEvent},
 	"EventTopicRewardsSet":      {Type: TopicRewardEvent},
 	"EventEMAScoresSet":         {Type: EMAScoreEvent},
+	"EventTokenomicsSet":        {Type: TokenomicsEvent},
 }
 
 type BlockResult struct {
