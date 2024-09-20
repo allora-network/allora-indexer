@@ -47,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * [#21](https://github.com/allora-network/allora-chain/pull/21) Fix previous binaries and batch requests
 * [#25](https://github.com/allora-network/allora-chain/pull/25) Add new events and update tx process + batch new events tx
+* [#27](https://github.com/allora-network/allora-indexer/pull/27) Add sql script for creating new tables of v5
 
 ### Removed
 
