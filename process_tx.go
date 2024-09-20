@@ -57,7 +57,6 @@ func processTx(ctx context.Context, wg *sync.WaitGroup, height uint64, txData st
 		}
 
 		var messageId uint64
-		log.Info().Msgf("Inserting message, height: %d", height)
 		messageId, err = insertMessage(height, mtype, creator, string(mjson))
 		if err != nil {
 			log.Error().Err(err).Msgf("Failed to insertMessage, height: %d", height)

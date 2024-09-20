@@ -24,4 +24,18 @@ CREATE TABLE IF NOT EXISTS tokenomics (
     circulating_supply NUMERIC(72,18),
     emissions_amount NUMERIC(72,18),
     ecosystem_mint_amount NUMERIC(72,18)
-)
+);
+CREATE TABLE IF NOT EXISTS topic_rewards (
+    id SERIAL PRIMARY KEY,
+    height_tx BIGINT,
+    topic_id INT,
+    reward NUMERIC(72,18),
+    CONSTRAINT unique_topic_rewards_entry UNIQUE (topic_id, height_tx)
+);
+CREATE TABLE IF NOT EXISTS topic_forecasting_scores (
+    id SERIAL PRIMARY KEY,
+    height_tx BIGINT,
+    topic_id INT,
+    score BIGINT,
+    CONSTRAINT unique_topic_forecasting_scores_entry UNIQUE (topic_id, height_tx)
+);
