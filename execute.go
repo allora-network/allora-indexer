@@ -85,8 +85,10 @@ func DecodeTx(config ClientConfig, params string, blockHeight uint64) (types.Tx,
 	// Determine the appropriate version based on block height
 	var alloradPath string
 	switch {
-	case blockHeight >= 1004550: // Adjust this condition based on your versioning logic
-		alloradPath = "/usr/local/bin/allorad" // 0.4.0
+	case blockHeight >= 1296200:
+		alloradPath = "/usr/local/bin/allorad" // 0.5.0
+	case blockHeight >= 1004550:
+		alloradPath = "/usr/local/bin/previous/v4/allorad" // 0.4.0
 	case blockHeight >= 812000:
 		alloradPath = "/usr/local/bin/previous/v3/allorad" // 0.3.0
 	default:

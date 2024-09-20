@@ -69,6 +69,9 @@ const (
 	TB_SCORES                    = "scores"
 	TB_NETWORKLOSSES             = "networklosses"
 	TB_NETWORKLOSS_BUNDLE_VALUES = "networkloss_bundle_values"
+	TB_EMASCORES                 = "ema_scores"
+	TB_ACTOR_LAST_COMMIT         = "last_commit_values"
+	TB_TOKENOMICS                = "tokenomics"
 )
 
 var dbPool *pgxpool.Pool //*pgx.Conn
@@ -439,6 +442,34 @@ func createEventsTablesSQL() string {
 		value VARCHAR(255),
 		worker VARCHAR(255)
 	);
+	
+	CREATE TABLE IF NOT EXISTS ` + TB_EMASCORES + ` (
+		id SERIAL PRIMARY KEY,
+		height_tx BIGINT,
+		height BIGINT,
+		topic_id INT,
+		type VARCHAR(255),
+		address VARCHAR(255),
+		score NUMERIC(72,18),
+		is_active BOOLEAN,
+		CONSTRAINT unique_ema_score_entry UNIQUE (topic_id, type, address)
+	);
+	CREATE TABLE IF NOT EXISTS ` + TB_ACTOR_LAST_COMMIT + ` (
+		id SERIAL PRIMARY KEY,
+		height_tx BIGINT,
+		height BIGINT,
+		topic_id INT,
+		is_worker BOOLEAN,
+		CONSTRAINT unique_actor_last_commit_entry UNIQUE (topic_id, is_worker)
+	);
+	CREATE TABLE IF NOT EXISTS ` + TB_TOKENOMICS + ` (
+		id SERIAL PRIMARY KEY,
+		height_tx BIGINT,
+		staked_amount NUMERIC(72,18),
+		circulating_supply NUMERIC(72,18),
+		emissions_amount NUMERIC(72,18),
+		ecosystem_mint_amount NUMERIC(72,18)
+	);
 	`
 }
 
@@ -571,10 +602,41 @@ func isNetworkLossEvent(event EventRecord) bool {
 	return isEventType(event.Type, "emissions.v", "EventNetworkLossSet")
 }
 
+// isForecastTaskScoreEvent checks if the event is a forecast task score event based on its type.
+func isForecastTaskScoreEvent(event EventRecord) bool {
+	return isEventType(event.Type, "emissions.v", "EventForecastTaskScoreSet")
+}
+
+// isLastCommitEvent checks if the event is a worker/reputer last commit event based on its type.
+func isWorkerLastCommitEvent(event EventRecord) bool {
+	return isEventType(event.Type, "emissions.v", "EventWorkerLastCommitSet")
+}
+
+func isReputerLastCommitEvent(event EventRecord) bool {
+	return isEventType(event.Type, "emissions.v", "EventReputerLastCommitSet")
+}
+
+func isTopicRewardEvent(event EventRecord) bool {
+	return isEventType(event.Type, "emissions.v", "EventTopicRewardsSet")
+}
+
+func isEMAScoreEvent(event EventRecord) bool {
+	return isEventType(event.Type, "emissions.v", "EventEMAScoresSet")
+}
+
+func isTokenomicsEvent(event EventRecord) bool {
+	return isEventType(event.Type, "mint.v", "EventTokenomicsSet")
+}
+
 func insertEvents(events []EventRecord) error {
 	var scoreEvents []EventRecord
 	var rewardEvents []EventRecord
 	var networkLossEvents []EventRecord
+	var forecastTaskScoreEvents []EventRecord
+	var actorLastCommitEvents []EventRecord
+	var topicRewardEvents []EventRecord
+	var emaScoreEvents []EventRecord
+	var tokenomicsEvents []EventRecord
 	// For inserting events in batch:
 	var insertStatements []string
 	var values []interface{}
@@ -588,6 +650,16 @@ func insertEvents(events []EventRecord) error {
 			rewardEvents = append(rewardEvents, event)
 		} else if isNetworkLossEvent(event) { // Function to check if it's a network loss event
 			networkLossEvents = append(networkLossEvents, event)
+		} else if isForecastTaskScoreEvent(event) {
+			forecastTaskScoreEvents = append(forecastTaskScoreEvents, event) // Function to check if it's a forecast task score event
+		} else if isWorkerLastCommitEvent(event) || isReputerLastCommitEvent(event) {
+			actorLastCommitEvents = append(actorLastCommitEvents, event) // Function to check if it's an actor last commit event
+		} else if isTopicRewardEvent(event) {
+			topicRewardEvents = append(topicRewardEvents, event) // Function to check if it's a topic reward event
+		} else if isEMAScoreEvent(event) {
+			emaScoreEvents = append(emaScoreEvents, event) // Function to check if it's an ema score event
+		} else if isTokenomicsEvent(event) {
+			tokenomicsEvents = append(tokenomicsEvents, event) // Function to check if it's a tokenomics event
 		} else {
 			log.Info().Msg("Unrecognized event, ignoring")
 			continue
@@ -643,6 +715,45 @@ func insertEvents(events []EventRecord) error {
 		}
 	}
 
+	// Insert forecast task score if any
+	if len(forecastTaskScoreEvents) > 0 {
+		err := updateForecastTaskScore(forecastTaskScoreEvents)
+		if err != nil {
+			log.Error().Err(err).Msg("failed to insert forecast task score")
+		}
+	}
+
+	// Insert actor last commit if any
+	if len(actorLastCommitEvents) > 0 {
+		err := insertActorLastCommit(actorLastCommitEvents)
+		if err != nil {
+			log.Error().Err(err).Msg("failed to insert last commit")
+		}
+	}
+
+	// Insert topic reward if any
+	if len(topicRewardEvents) > 0 {
+		err := updateTopicReward(topicRewardEvents)
+		if err != nil {
+			log.Error().Err(err).Msg("failed to insert topic reward")
+		}
+	}
+
+	// Insert ema score if any
+	if len(emaScoreEvents) > 0 {
+		err := insertEMAScore(emaScoreEvents)
+		if err != nil {
+			log.Error().Err(err).Msg("failed to insert ema score")
+		}
+	}
+
+	// Insert tokenomics if any
+	if len(tokenomicsEvents) > 0 {
+		err := insertTokenomics(tokenomicsEvents)
+		if err != nil {
+			log.Error().Err(err).Msg("failed to insert tokenomics")
+		}
+	}
 	return nil
 }
 
@@ -823,7 +934,6 @@ func insertReward(events []EventRecord) error {
 	return nil
 }
 
-// func insertNetworkLoss(event EventRecord) error {
 func insertNetworkLoss(events []EventRecord) error {
 	for _, event := range events {
 		log.Debug().Interface("Event network loss", event).Msg("inserting event network loss ")
@@ -874,6 +984,340 @@ func insertNetworkLoss(events []EventRecord) error {
 	return nil
 }
 
+func updateForecastTaskScore(events []EventRecord) error {
+	log.Info().Msg("Updating topic forecasting task score")
+	isExist, err := isColumnExist(TB_TOPICS, "forecast_task_score")
+	if err != nil {
+		return err
+	}
+	if !isExist {
+		err = addColumn(TB_TOPICS, "forecast_task_score", "BIGINT")
+		if err != nil {
+			return err
+		}
+	}
+	for _, event := range events {
+		log.Trace().Interface("Event topic forecast task reward", event).Msg("Processing event topic forecast task score")
+		var attributes []Attribute
+		err = json.Unmarshal(event.Data, &attributes)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal event data: %w", err)
+		}
+
+		var topicID int
+		var score = new(big.Float)
+		for _, attr := range attributes {
+			switch attr.Key {
+			case "topic_id":
+				cleanedValue := strings.Trim(attr.Value, "\"")
+				topicID, err = strconv.Atoi(cleanedValue)
+				if err != nil {
+					return fmt.Errorf("failed to get topic id: %w", err)
+				}
+			case "score":
+				cleanedValue := strings.Trim(attr.Value, "\"")
+				_, ok := score.SetString(cleanedValue)
+				if !ok {
+					return fmt.Errorf("failed to unmarshal forecast task score: %w", err)
+				}
+			}
+		}
+		_, err = dbPool.Exec(context.Background(), `
+				UPDATE `+TB_TOPICS+` SET forecast_task_score = $1 WHERE id=$2`,
+			score, topicID,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to update topic reward")
+		}
+	}
+	return nil
+}
+
+func insertActorLastCommit(events []EventRecord) error {
+	log.Info().Msg("Inserting actor last commit in batch")
+	var insertStatements []string
+	var values []interface{}
+
+	placeholderCounter := 1 // Placeholder index starts at 1 in PostgreSQL
+	for _, event := range events {
+		log.Trace().Interface("Event last commit", event).Msg("Processing event last commit")
+		var attributes []Attribute
+		err := json.Unmarshal(event.Data, &attributes)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal event data: %w", err)
+		}
+
+		var topicID int
+		var height int
+		var nonce int
+		var isWorker = true
+		if isReputerLastCommitEvent(event) {
+			isWorker = false
+		}
+		for _, attr := range attributes {
+			switch attr.Key {
+			case "block_height":
+				cleanedValue := strings.Trim(attr.Value, "\"")
+				height, err = strconv.Atoi(cleanedValue)
+				if err != nil {
+					return fmt.Errorf("failed to get block height: %w", err)
+				}
+			case "nonce":
+				var cleanedValue map[string]string
+				err = json.Unmarshal([]byte(attr.Value), &cleanedValue)
+				if err != nil {
+					return fmt.Errorf("failed to unmarshal nonce: %w", err)
+				}
+				nonce, err = strconv.Atoi(cleanedValue["block_height"])
+				if err != nil {
+					return fmt.Errorf("failed to convert getting nonce: %w", err)
+				}
+			case "topic_id":
+				cleanedValue := strings.Trim(attr.Value, "\"")
+				topicID, err = strconv.Atoi(cleanedValue)
+				if err != nil {
+					return fmt.Errorf("failed to get topic id: %w", err)
+				}
+			}
+		}
+
+		newStmt := fmt.Sprintf("($%d, $%d, $%d, $%d)", placeholderCounter, placeholderCounter+1, placeholderCounter+2, placeholderCounter+3)
+		insertStatements = append(insertStatements, newStmt)
+		values = append(values, height, nonce, topicID, isWorker)
+		placeholderCounter += 4 // Increase counter for next row
+	}
+	if len(insertStatements) > 0 {
+		sqlStatement := fmt.Sprintf(`
+			INSERT INTO %s (height_tx, height, topic_id, is_worker) 
+			VALUES %s`, TB_ACTOR_LAST_COMMIT, strings.Join(insertStatements, ","))
+		_, err := dbPool.Exec(context.Background(), sqlStatement, values...)
+		if err != nil {
+			return fmt.Errorf("failed to insert last commit event")
+		}
+	} else {
+		log.Info().Msg("No last commit event to insert")
+	}
+	return nil
+}
+
+func updateTopicReward(events []EventRecord) error {
+	log.Info().Msg("Updating topic reward")
+	isExist, err := isColumnExist(TB_TOPICS, "reward")
+	if err != nil {
+		return err
+	}
+	if !isExist {
+		err = addColumn(TB_TOPICS, "reward", "NUMERIC(72,18)")
+		if err != nil {
+			return err
+		}
+	}
+	for _, event := range events {
+		log.Trace().Interface("Event topic reward", event).Msg("Processing event topic reward")
+		var attributes []Attribute
+		err = json.Unmarshal(event.Data, &attributes)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal event data: %w", err)
+		}
+
+		var topicIDs []string
+		var rewards []big.Float
+		for _, attr := range attributes {
+			switch attr.Key {
+			case "topic_ids":
+				err = json.Unmarshal([]byte(attr.Value), &topicIDs)
+				if err != nil {
+					return fmt.Errorf("failed to unmarshal topics: %w", err)
+				}
+			case "rewards":
+				err = json.Unmarshal([]byte(attr.Value), &rewards)
+				if err != nil {
+					return fmt.Errorf("failed to unmarshal rewards: %w", err)
+				}
+			}
+		}
+		if len(topicIDs) != len(rewards) {
+			return fmt.Errorf("mismatch in length of topic ids and rewards")
+		}
+
+		for index, topic := range topicIDs {
+			_, err = dbPool.Exec(context.Background(), `
+				UPDATE `+TB_TOPICS+` SET reward = $1 WHERE id=$2`,
+				rewards[index].Text('f', -1), topic,
+			)
+			if err != nil {
+				return fmt.Errorf("failed to update topic reward")
+			}
+		}
+	}
+	return nil
+}
+
+func insertEMAScore(events []EventRecord) error {
+	log.Info().Msg("Inserting ema scores in batch")
+	var insertStatements []string
+	var values []interface{}
+
+	placeholderCounter := 1 // Placeholder index starts at 1 in PostgreSQL
+
+	for _, event := range events {
+		log.Trace().Interface("Event score", event).Msg("Processing event score")
+		var attributes []Attribute
+		err := json.Unmarshal(event.Data, &attributes)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal event data: %w", err)
+		}
+
+		var topicID int
+		var actorType string
+		var addresses []string
+		var scores []big.Float
+		var activations []bool
+		var blockHeight int
+
+		for _, attr := range attributes {
+			switch attr.Key {
+			case "topic_id":
+				cleanedValue := strings.Trim(attr.Value, "\"")
+				topicID, err = strconv.Atoi(cleanedValue)
+				if err != nil {
+					return fmt.Errorf("failed to convert topic_id to int: %w", err)
+				}
+			case "actor_type":
+				actorType = strings.Trim(attr.Value, "\"")
+			case "nonce":
+				cleanedValue := strings.Trim(attr.Value, "\"")
+				blockHeight, err = strconv.Atoi(cleanedValue)
+				if err != nil {
+					return fmt.Errorf("failed to convert block_height to int: %w", err)
+				}
+			case "addresses":
+				err = json.Unmarshal([]byte(attr.Value), &addresses)
+				if err != nil {
+					return fmt.Errorf("failed to unmarshal addresses: %w", err)
+				}
+			case "scores":
+				var rawScores []string
+				err = json.Unmarshal([]byte(attr.Value), &rawScores)
+				if err != nil {
+					return fmt.Errorf("failed to unmarshal scores: %w", err)
+				}
+
+				for _, rawScore := range rawScores {
+					rawScoreClean := strings.Trim(rawScore, "\"")
+					if isInvalidNumericValue(rawScoreClean) {
+						log.Error().Str("rawScore", rawScore).Msg("Failed to convert score to big.Float")
+						return fmt.Errorf("Invalid Score: %s", rawScoreClean)
+					} else {
+						score := new(big.Float)
+						score, ok := score.SetString(rawScoreClean)
+						if !ok {
+							log.Error().Str("rawScore", rawScore).Msg("Failed to convert score to big.Float")
+							return fmt.Errorf("Invalid Score: %s", rawScoreClean)
+						}
+						scores = append(scores, *score)
+					}
+				}
+			case "is_active":
+				err = json.Unmarshal([]byte(attr.Value), &activations)
+				if err != nil {
+					return fmt.Errorf("failed to unmarshal activation: %w", err)
+				}
+			}
+		}
+
+		if len(addresses) != len(scores) || len(scores) != len(activations) {
+			return fmt.Errorf("mismatch in length of addresses, scores, activations")
+		}
+
+		for i := range addresses {
+			// Generate the placeholders for this row
+			newStmt := fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d)", placeholderCounter, placeholderCounter+1,
+				placeholderCounter+2, placeholderCounter+3, placeholderCounter+4, placeholderCounter+5, placeholderCounter+6)
+			insertStatements = append(insertStatements, newStmt)
+			scoreValue := scores[i].Text('f', -1)
+			values = append(values, event.Height, blockHeight, topicID, actorType, addresses[i], scoreValue, activations[i])
+			placeholderCounter += 7 // Increase counter for next row
+		}
+	}
+
+	if len(insertStatements) > 0 {
+		sqlStatement := fmt.Sprintf(`
+			INSERT INTO %s (height_tx, height, topic_id, type, address, score, is_active) 
+			VALUES %s ON CONFLICT (topic_id, type, address)
+			DO UPDATE SET score=EXCLUDED.score, is_active=EXCLUDED.is_active`, TB_EMASCORES,
+			strings.Join(insertStatements, ","))
+		log.Trace().Str("Event - Score SQL Statement", sqlStatement).Interface("Values", values).Msg("Executing batch insert for scores")
+		_, err := dbPool.Exec(context.Background(), sqlStatement, values...)
+		if err != nil {
+			return fmt.Errorf("score insert failed: %v", err)
+		}
+	} else {
+		log.Info().Msg("No scores data to insert")
+	}
+
+	return nil
+}
+
+func insertTokenomics(events []EventRecord) error {
+	log.Info().Msg("Inserting tokenomics")
+	var insertStatements []string
+	var values []interface{}
+
+	placeholderCounter := 1 // Placeholder index starts at 1 in PostgreSQL
+
+	for _, event := range events {
+		log.Trace().Interface("Event tokenomics", event).Msg("Processing tokenomic event")
+		var attributes []Attribute
+		err := json.Unmarshal(event.Data, &attributes)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal event data: %w", err)
+		}
+
+		var stakedTokenAmount = new(big.Float)
+		var circulatingAmount = new(big.Float)
+		var emissionsAmount = new(big.Float)
+		for _, attr := range attributes {
+			switch attr.Key {
+			case "circulating_supply":
+				cleanedValue := strings.Trim(attr.Value, "\"")
+				_, ok := circulatingAmount.SetString(cleanedValue)
+				if !ok {
+					return fmt.Errorf("failed to get circulating supply: %w", err)
+				}
+			case "emissions_amount":
+				cleanedValue := strings.Trim(attr.Value, "\"")
+				_, ok := emissionsAmount.SetString(cleanedValue)
+				if !ok {
+					return fmt.Errorf("failed to get emissions total amount supply: %w", err)
+				}
+			case "staked_token_amount":
+				cleanedValue := strings.Trim(attr.Value, "\"")
+				_, ok := stakedTokenAmount.SetString(cleanedValue)
+				if !ok {
+					return fmt.Errorf("failed to get staked token amount supply: %w", err)
+				}
+			}
+		}
+
+		newStmt := fmt.Sprintf("($%d, $%d, $%d, $%d)", placeholderCounter, placeholderCounter+1, placeholderCounter+2, placeholderCounter+3)
+		insertStatements = append(insertStatements, newStmt)
+		values = append(values, event.Height, stakedTokenAmount, circulatingAmount, emissionsAmount)
+		placeholderCounter += 4 // Increase counter for next row
+	}
+	if len(insertStatements) > 0 {
+		sqlStatement := fmt.Sprintf(`
+			INSERT INTO %s (height_tx, staked_amount, circulating_supply, emissions_amount) 
+			VALUES %s`, TB_TOKENOMICS, strings.Join(insertStatements, ","))
+		_, err := dbPool.Exec(context.Background(), sqlStatement, values...)
+		if err != nil {
+			return fmt.Errorf("failed to insert tokenomics event")
+		}
+	} else {
+		log.Info().Msg("No tokenomics event to insert")
+	}
+	return nil
+}
 func isDataEmpty(table string) (bool, error) {
 	var count int
 	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", table)
@@ -1046,6 +1490,27 @@ func addUniqueConstraints() error {
 	return nil
 }
 
+func isColumnExist(table, column string) (bool, error) {
+	var res = 0
+	err := dbPool.QueryRow(context.Background(), `SELECT COUNT(*) FROM information_schema.columns WHERE table_name=$1 AND column_name = $2`,
+		table, column,
+	).Scan(&res)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to query to check column existence")
+	}
+	return res > 0, nil
+}
+
+func addColumn(table, column, columnType string) error {
+	_, err := dbPool.Exec(context.Background(), `ALTER TABLE `+
+		table+` ADD COLUMN `+column+` `+columnType,
+	)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to add new column")
+	}
+
+	return nil
+}
 func hash(s string) uint32 {
 	h := fnv.New32a()
 	h.Write([]byte(s))

@@ -6,9 +6,14 @@ import (
 
 func TestFilterEvents(t *testing.T) {
 	whitelist := map[string]EventProcessing{
-		"EventScoresSet":      {Type: ScoreEvent},
-		"EventRewardsSettled": {Type: RewardEvent},
-		"EventNetworkLossSet": {Type: NetworkLossEvent},
+		"EventScoresSet":            {Type: ScoreEvent},
+		"EventRewardsSettled":       {Type: RewardEvent},
+		"EventNetworkLossSet":       {Type: NetworkLossEvent},
+		"EventForecastTaskScoreSet": {Type: ForecastTaskScoreEvent},
+		"EventWorkerLastCommitSet":  {Type: ActorLastCommitEvent},
+		"EventReputerLastCommitSet": {Type: ActorLastCommitEvent},
+		"EventTopicRewardsSet":      {Type: TopicRewardEvent},
+		"EventEMAScoresSet":         {Type: EMAScoreEvent},
 	}
 
 	tests := []struct {
@@ -28,10 +33,15 @@ func TestFilterEvents(t *testing.T) {
 						{Type: "emissions.v1.EventScoresSet"},
 						{Type: "emissions.v1.EventRewardsSettled"},
 						{Type: "emissions.v1.EventNetworkLossSet"},
+						{Type: "emissions.v4.EventForecastTaskScoreSet"},
+						{Type: "emissions.v4.EventWorkerLastCommitSet"},
+						{Type: "emissions.v4.EventReputerLastCommitSet"},
+						{Type: "emissions.v4.EventTopicRewardsSet"},
 					},
 					TxsBlockEvents: []TxEvent{
 						{Events: []Event{
 							{Type: "emissions.v2.EventScoresSet"},
+							{Type: "emissions.v4.EventEMAScoresSet"},
 						}},
 					},
 				},
@@ -40,7 +50,12 @@ func TestFilterEvents(t *testing.T) {
 				{Type: "emissions.v1.EventScoresSet"},
 				{Type: "emissions.v1.EventRewardsSettled"},
 				{Type: "emissions.v1.EventNetworkLossSet"},
+				{Type: "emissions.v4.EventForecastTaskScoreSet"},
+				{Type: "emissions.v4.EventWorkerLastCommitSet"},
+				{Type: "emissions.v4.EventReputerLastCommitSet"},
+				{Type: "emissions.v4.EventTopicRewardsSet"},
 				{Type: "emissions.v2.EventScoresSet"},
+				{Type: "emissions.v4.EventEMAScoresSet"},
 			},
 		},
 		{
