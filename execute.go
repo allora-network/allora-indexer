@@ -92,7 +92,7 @@ func DecodeTx(config ClientConfig, params string, blockHeight uint64) (types.Tx,
 	case blockHeight >= 812000:
 		alloradPath = "/usr/local/bin/previous/v3/allorad" // 0.3.0
 	default:
-		alloradPath = "allorad" // 0.2.14
+		alloradPath = "/usr/local/bin/previous/v2/allorad" // 0.2.14
 	}
 
 	// Update the config to use the selected allorad binary
