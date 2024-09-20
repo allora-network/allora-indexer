@@ -1035,6 +1035,10 @@ func updateForecastTaskScore(events []EventRecord) error {
 
 func insertActorLastCommit(events []EventRecord) error {
 	log.Info().Msg("Inserting actor last commit in batch")
+	var insertStatements []string
+	var values []interface{}
+
+	placeholderCounter := 1 // Placeholder index starts at 1 in PostgreSQL
 	for _, event := range events {
 		log.Trace().Interface("Event last commit", event).Msg("Processing event last commit")
 		var attributes []Attribute
@@ -1077,15 +1081,21 @@ func insertActorLastCommit(events []EventRecord) error {
 			}
 		}
 
-		_, err = dbPool.Exec(context.Background(),
-			`INSERT INTO `+TB_ACTOR_LAST_COMMIT+` (height_tx, height, topic_id, is_worker) VALUES ($1, $2, $3, $4)
-				ON CONFLICT (topic_id, is_worker) DO UPDATE SET 
-				height=EXCLUDED.height, height_tx=EXCLUDED.height_tx`,
-			height, nonce, topicID, isWorker,
-		)
+		newStmt := fmt.Sprintf("($%d, $%d, $%d, $%d)", placeholderCounter, placeholderCounter+1, placeholderCounter+2, placeholderCounter+3)
+		insertStatements = append(insertStatements, newStmt)
+		values = append(values, height, nonce, topicID, isWorker)
+		placeholderCounter += 4 // Increase counter for next row
+	}
+	if len(insertStatements) > 0 {
+		sqlStatement := fmt.Sprintf(`
+			INSERT INTO %s (height_tx, height, topic_id, is_worker) 
+			VALUES %s`, TB_ACTOR_LAST_COMMIT, strings.Join(insertStatements, ","))
+		_, err := dbPool.Exec(context.Background(), sqlStatement, values...)
 		if err != nil {
-			return fmt.Errorf("failed to update topic reward")
+			return fmt.Errorf("failed to insert last commit event")
 		}
+	} else {
+		log.Info().Msg("No last commit event to insert")
 	}
 	return nil
 }
