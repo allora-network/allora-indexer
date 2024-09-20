@@ -1316,7 +1316,6 @@ func insertTokenomics(events []EventRecord) error {
 	} else {
 		log.Info().Msg("No tokenomics event to insert")
 	}
-
 	return nil
 }
 
