@@ -1317,21 +1317,6 @@ func insertTokenomics(events []EventRecord) error {
 		log.Info().Msg("No tokenomics event to insert")
 	}
 
-	if len(insertStatements) > 0 {
-		sqlStatement := fmt.Sprintf(`
-			INSERT INTO %s (height_tx, height, topic_id, type, address, value) 
-			VALUES %s`, TB_REWARDS, strings.Join(insertStatements, ","))
-
-		log.Trace().Str("Event - Reward SQL Statement", sqlStatement).Interface("Values", values).Msg("Executing batch insert for scores")
-
-		_, err := dbPool.Exec(context.Background(), sqlStatement, values...)
-		if err != nil {
-			return fmt.Errorf("rewards insert failed: %v", err)
-		}
-	} else {
-		log.Info().Msg("No rewards data to insert")
-	}
-
 	return nil
 }
 
