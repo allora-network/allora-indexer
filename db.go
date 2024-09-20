@@ -1261,6 +1261,11 @@ func insertEMAScore(events []EventRecord) error {
 
 func insertTokenomics(events []EventRecord) error {
 	log.Info().Msg("Inserting tokenomics")
+	var insertStatements []string
+	var values []interface{}
+
+	placeholderCounter := 1 // Placeholder index starts at 1 in PostgreSQL
+
 	for _, event := range events {
 		log.Trace().Interface("Event tokenomics", event).Msg("Processing tokenomic event")
 		var attributes []Attribute
@@ -1295,13 +1300,21 @@ func insertTokenomics(events []EventRecord) error {
 			}
 		}
 
-		_, err = dbPool.Exec(context.Background(),
-			`INSERT INTO `+TB_TOKENOMICS+` (height_tx, staked_amount, circulating_supply, emissions_amount) VALUES ($1, $2, $3, $4)`,
-			event.Height, stakedTokenAmount, circulatingAmount, emissionsAmount,
-		)
+		newStmt := fmt.Sprintf("($%d, $%d, $%d, $%d)", placeholderCounter, placeholderCounter+1, placeholderCounter+2, placeholderCounter+3)
+		insertStatements = append(insertStatements, newStmt)
+		values = append(values, event.Height, stakedTokenAmount, circulatingAmount, emissionsAmount)
+		placeholderCounter += 4 // Increase counter for next row
+	}
+	if len(insertStatements) > 0 {
+		sqlStatement := fmt.Sprintf(`
+			INSERT INTO %s (height_tx, staked_amount, circulating_supply, emissions_amount) 
+			VALUES %s`, TB_TOKENOMICS, strings.Join(insertStatements, ","))
+		_, err := dbPool.Exec(context.Background(), sqlStatement, values...)
 		if err != nil {
-			return fmt.Errorf("failed to update topic reward")
+			return fmt.Errorf("failed to insert tokenomics event")
 		}
+	} else {
+		log.Info().Msg("No tokenomics event to insert")
 	}
 	return nil
 }
