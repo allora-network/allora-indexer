@@ -476,14 +476,14 @@ func createEventsTablesSQL() string {
 		id SERIAL PRIMARY KEY,
 		height_tx BIGINT,
 		topic_id INT,
-		reward NUMERIC(72,18),
+		reward VARCHAR(255),
     	CONSTRAINT unique_topic_rewards_entry UNIQUE (topic_id, height_tx)
 	);
 	CREATE TABLE IF NOT EXISTS ` + TB_TOPIC_FORECASTING_SCORES + ` (
 		id SERIAL PRIMARY KEY,
 		height_tx BIGINT,
 		topic_id INT,
-		score BIGINT,
+		score VARCHAR(255),
     	CONSTRAINT unique_topic_forecasting_scores_entry UNIQUE (topic_id, height_tx)
 	);
 	`
@@ -1017,7 +1017,7 @@ func insertForecastTaskScore(events []EventRecord) error {
 		}
 
 		var topicID int
-		var score = new(big.Float)
+		var score string
 		for _, attr := range attributes {
 			switch attr.Key {
 			case "topic_id":
@@ -1027,11 +1027,7 @@ func insertForecastTaskScore(events []EventRecord) error {
 					return fmt.Errorf("failed to get topic id: %w", err)
 				}
 			case "score":
-				cleanedValue := strings.Trim(attr.Value, "\"")
-				_, ok := score.SetString(cleanedValue)
-				if !ok {
-					return fmt.Errorf("failed to unmarshal forecast task score: %w", err)
-				}
+				score = strings.Trim(attr.Value, "\"")
 			}
 		}
 		newStmt := fmt.Sprintf("($%d, $%d, $%d)", placeholderCounter, placeholderCounter+1, placeholderCounter+2)
