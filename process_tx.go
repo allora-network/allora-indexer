@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -63,8 +64,10 @@ func processTx(ctx context.Context, wg *sync.WaitGroup, height uint64, txData st
 			return err
 		}
 
-		switch mtype {
-		case "/emissions.v1.MsgCreateNewTopic", "/emissions.v2.MsgCreateNewTopic", "/emissions.v3.MsgCreateNewTopic":
+		switch {
+		case strings.HasPrefix(mtype, "/emissions.v") &&
+			(strings.HasSuffix(mtype, "MsgCreateNewTopic") ||
+				strings.HasSuffix(mtype, "CreateNewTopicRequest")):
 			// Process MsgProcessInferences
 			log.Info().Msg("Processing MsgCreateNewTopic...")
 			// Add your processing logic here
@@ -76,7 +79,9 @@ func processTx(ctx context.Context, wg *sync.WaitGroup, height uint64, txData st
 				return err
 			}
 
-		case "/emissions.v1.MsgFundTopic", "/emissions.v1.MsgAddStake", "/emissions.v2.MsgFundTopic", "/emissions.v2.MsgAddStake", "/emissions.v3.MsgFundTopic", "/emissions.v3.MsgAddStake":
+		case strings.HasPrefix(mtype, "/emissions.v") &&
+			(strings.HasSuffix(mtype, "MsgFundTopic") || strings.HasSuffix(mtype, "FundTopicRequest") ||
+				strings.HasSuffix(mtype, "MsgAddStake") || strings.HasSuffix(mtype, "AddStakeRequest")):
 			// Process MsgProcessInferences
 			log.Info().Msg("Processing MsgFundTopic...")
 			// Add your processing logic here
@@ -88,7 +93,8 @@ func processTx(ctx context.Context, wg *sync.WaitGroup, height uint64, txData st
 				return err
 			}
 
-		case "/cosmos.bank.v1beta1.MsgSend":
+		case strings.HasPrefix(mtype, "/cosmos.bank.v1beta1") &&
+			strings.HasSuffix(mtype, "MsgSend"): //"/cosmos.bank.v1beta1.MsgSend":
 			// Process MsgProcessInferences
 			log.Info().Msg("Processing MsgSend...")
 			// Add your processing logic here
@@ -100,7 +106,8 @@ func processTx(ctx context.Context, wg *sync.WaitGroup, height uint64, txData st
 				return err
 			}
 
-		case "/emissions.v1.MsgRegister", "/emissions.v2.MsgRegister", "/emissions.v3.MsgRegister":
+		case strings.HasPrefix(mtype, "/emissions.v") &&
+			(strings.HasSuffix(mtype, "MsgRegister") || strings.HasSuffix(mtype, "RegisterRequest")):
 			// Process MsgProcessInferences
 			log.Info().Msg("Processing MsgRegister...")
 			var msgRegister types.MsgRegister
@@ -111,7 +118,8 @@ func processTx(ctx context.Context, wg *sync.WaitGroup, height uint64, txData st
 				return err
 			}
 
-		case "/emissions.v1.MsgInsertBulkWorkerPayload":
+		case strings.HasPrefix(mtype, "/emissions.v1") &&
+			strings.HasSuffix(mtype, "MsgInsertBulkWorkerPayload"):
 			// Process MsgProcessInferences
 			log.Info().Msg("Processing MsgInsertBulkWorkerPayload...")
 			var workerPayload types.MsgInsertBulkWorkerPayload
@@ -121,7 +129,9 @@ func processTx(ctx context.Context, wg *sync.WaitGroup, height uint64, txData st
 				log.Error().Err(err).Msgf("Failed to insertBulkWorkerPayload, height: %d", height)
 				return err
 			}
-		case "/emissions.v2.MsgInsertWorkerPayload", "/emissions.v3.MsgInsertWorkerPayload":
+		case strings.HasPrefix(mtype, "/emissions.v") &&
+			(strings.HasSuffix(mtype, "MsgInsertWorkerPayload") ||
+				strings.HasSuffix(mtype, "InsertWorkerPayloadRequest")):
 			// Process MsgProcessInferences
 			log.Info().Msg("Processing MsgInsertWorkerPayload...")
 			var workerPayload types.MsgInsertWorkerPayload
@@ -132,7 +142,8 @@ func processTx(ctx context.Context, wg *sync.WaitGroup, height uint64, txData st
 				return err
 			}
 
-		case "/emissions.v1.MsgInsertBulkReputerPayload":
+		case strings.HasPrefix(mtype, "/emissions.v1") &&
+			strings.HasSuffix(mtype, "MsgInsertBulkReputerPayload"):
 			// Process MsgInsertReputerPayload
 			log.Info().Msg("Processing MsgInsertBulkReputerPayload...")
 			var reputerPayload types.MsgInsertBulkReputerPayload
@@ -142,7 +153,9 @@ func processTx(ctx context.Context, wg *sync.WaitGroup, height uint64, txData st
 				log.Error().Err(err).Msgf("Failed to insertBulkReputerPayload, height: %d", height)
 				return err
 			}
-		case "/emissions.v2.MsgInsertReputerPayload", "/emissions.v3.MsgInsertReputerPayload":
+		case strings.HasPrefix(mtype, "/emissions.v") &&
+			(strings.HasSuffix(mtype, "MsgInsertReputerPayload") ||
+				strings.HasSuffix(mtype, "InsertReputerPayloadRequest")):
 			// Process MsgInsertReputerPayload
 			log.Info().Msg("Processing MsgInsertReputerPayload...")
 			var reputerPayload types.MsgInsertReputerPayload

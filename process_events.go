@@ -21,6 +21,16 @@ const (
 	ScoreEvent EventType = "score"
 	// NetworkLossEvent represents a network loss event
 	NetworkLossEvent EventType = "networkloss"
+	// ForecastTaskScoreEvent represents a forecast task score event
+	ForecastTaskScoreEvent EventType = "forecastTaskScore"
+	// ActorLastCommitEvent represents a last commit event
+	ActorLastCommitEvent EventType = "lastcommit"
+	// TopicRewardEvent represents a topic reward event
+	TopicRewardEvent EventType = "topicReward"
+	// EMAScoreEvent represents a ema score event
+	EMAScoreEvent EventType = "emascore"
+	// TokenomicsEvent represents a ema score event
+	TokenomicsEvent EventType = "tokenomics"
 	// NoneEvent represents an event that doesn't need processing
 	NoneEvent EventType = "none"
 	// an invalid event type
@@ -33,9 +43,15 @@ type EventProcessing struct {
 }
 
 var event_whitelist = map[string]EventProcessing{
-	"EventScoresSet":      {Type: ScoreEvent},
-	"EventRewardsSettled": {Type: RewardEvent},
-	"EventNetworkLossSet": {Type: NetworkLossEvent},
+	"EventScoresSet":            {Type: ScoreEvent},
+	"EventRewardsSettled":       {Type: RewardEvent},
+	"EventNetworkLossSet":       {Type: NetworkLossEvent},
+	"EventForecastTaskScoreSet": {Type: ForecastTaskScoreEvent},
+	"EventWorkerLastCommitSet":  {Type: ActorLastCommitEvent},
+	"EventReputerLastCommitSet": {Type: ActorLastCommitEvent},
+	"EventTopicRewardsSet":      {Type: TopicRewardEvent},
+	"EventEMAScoresSet":         {Type: EMAScoreEvent},
+	"EventTokenomicsSet":        {Type: TokenomicsEvent},
 }
 
 type BlockResult struct {
