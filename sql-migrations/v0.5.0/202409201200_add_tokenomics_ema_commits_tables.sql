@@ -24,4 +24,5 @@ CREATE TABLE IF NOT EXISTS tokenomics (
     circulating_supply NUMERIC(72,18),
     emissions_amount NUMERIC(72,18),
     ecosystem_mint_amount NUMERIC(72,18)
-)
+);
+
