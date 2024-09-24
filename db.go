@@ -261,6 +261,8 @@ func createMessagesTablesSQL() string {
 		worker_libp2pkey VARCHAR(255),
 		is_reputer BOOLEAN
 	);
+	CREATE INDEX idx_worker_registrations_topic_id ON ` + TB_WORKER_REGISTRATIONS + ` (topic_id);
+
 
 	CREATE TABLE IF NOT EXISTS ` + TB_TRANSFERS + ` (
 		id SERIAL PRIMARY KEY,
@@ -272,6 +274,7 @@ func createMessagesTablesSQL() string {
 		amount VARCHAR(255),
 		denom VARCHAR(255)
 	);
+	CREATE INDEX idx_transfers_topic_id ON ` + TB_TRANSFERS + ` (topic_id);
 
 	CREATE TABLE IF NOT EXISTS ` + TB_INFERENCES + ` (
 		id SERIAL PRIMARY KEY,
@@ -285,6 +288,8 @@ func createMessagesTablesSQL() string {
 		extra_data TEXT,
 		proof TEXT
 	);
+	CREATE INDEX idx_inferences_topic_id ON ` + TB_INFERENCES + ` (topic_id);
+
 
 	CREATE TABLE IF NOT EXISTS ` + TB_FORECASTS + ` (
 		id SERIAL PRIMARY KEY,
@@ -302,6 +307,7 @@ func createMessagesTablesSQL() string {
 		value VARCHAR(255),
 		inferer VARCHAR(255)
 	);
+	CREATE INDEX idx_forecasts_topic_id ON ` + TB_FORECASTS + ` (topic_id);
 
 	CREATE TABLE IF NOT EXISTS ` + TB_REPUTER_PAYLOAD + ` (
 		id SERIAL PRIMARY KEY,
@@ -312,6 +318,7 @@ func createMessagesTablesSQL() string {
 		reputer_nonce_block_height INT,
 		topic_id INT
 	);
+	CREATE INDEX idx_reputer_payload_topic_id ON ` + TB_REPUTER_PAYLOAD + ` (topic_id);
 
 	CREATE TABLE IF NOT EXISTS ` + TB_REPUTER_BUNDLES + ` (
 		id SERIAL PRIMARY KEY,
@@ -326,6 +333,7 @@ func createMessagesTablesSQL() string {
 		reputer_request_worker_nonce  INT,
 		reputer_request_reputer_nonce  INT
 	);
+	CREATE INDEX idx_reputer_bundles_topic_id ON ` + TB_REPUTER_BUNDLES + ` (topic_id);
 
 	DO $$ BEGIN
 		CREATE TYPE reputerValueType AS ENUM(
@@ -404,6 +412,7 @@ func createEventsTablesSQL() string {
 		value NUMERIC(72,18),
 		CONSTRAINT unique_score_entry UNIQUE (height, topic_id, type, address)
 	);
+	CREATE INDEX idx_scores_topic_id ON ` + TB_SCORES + ` (topic_id);
 
 	CREATE TABLE IF NOT EXISTS ` + TB_REWARDS + ` (
 		id SERIAL PRIMARY KEY,
@@ -415,6 +424,7 @@ func createEventsTablesSQL() string {
 		value NUMERIC(72,18),
 		CONSTRAINT unique_reward_entry UNIQUE (height, topic_id, type, address)
 	);
+	CREATE INDEX idx_rewards_topic_id ON ` + TB_REWARDS + `  (topic_id);
 
 	CREATE TABLE IF NOT EXISTS ` + TB_NETWORKLOSSES + ` (
 		id SERIAL PRIMARY KEY,
@@ -425,6 +435,7 @@ func createEventsTablesSQL() string {
 		combined_value VARCHAR(255),
 		CONSTRAINT unique_networkloss_entry UNIQUE (height_tx, height, topic_id)
 	);
+	CREATE INDEX idx_networklosses_topic_id ON ` + TB_NETWORKLOSSES + ` (topic_id);
 
 	DO $$ BEGIN
 		CREATE TYPE networklossBundleValueType AS ENUM(
@@ -456,6 +467,8 @@ func createEventsTablesSQL() string {
 		is_active BOOLEAN,
 		CONSTRAINT unique_ema_score_entry UNIQUE (topic_id, type, address)
 	);
+	CREATE INDEX idx_emascores_topic_id ON ` + TB_EMASCORES + ` (topic_id);
+
 	CREATE TABLE IF NOT EXISTS ` + TB_ACTOR_LAST_COMMIT + ` (
 		id SERIAL PRIMARY KEY,
 		height_tx BIGINT,
@@ -464,6 +477,8 @@ func createEventsTablesSQL() string {
 		is_worker BOOLEAN,
 		CONSTRAINT unique_actor_last_commit_entry UNIQUE (topic_id, is_worker)
 	);
+	CREATE INDEX idx_actor_last_commit_topic_id ON ` + TB_ACTOR_LAST_COMMIT + ` (topic_id);
+
 	CREATE TABLE IF NOT EXISTS ` + TB_TOKENOMICS + ` (
 		id SERIAL PRIMARY KEY,
 		height_tx BIGINT,
@@ -472,6 +487,7 @@ func createEventsTablesSQL() string {
 		emissions_amount NUMERIC(72,18),
 		ecosystem_mint_amount NUMERIC(72,18)
 	);
+
 	CREATE TABLE IF NOT EXISTS ` + TB_TOPIC_REWARD + ` (
 		id SERIAL PRIMARY KEY,
 		height_tx BIGINT,
@@ -479,6 +495,8 @@ func createEventsTablesSQL() string {
 		reward VARCHAR(255),
     	CONSTRAINT unique_topic_rewards_entry UNIQUE (topic_id, height_tx)
 	);
+	CREATE INDEX idx_topic_reward_topic_id ON ` + TB_TOPIC_REWARD + ` (topic_id);
+
 	CREATE TABLE IF NOT EXISTS ` + TB_TOPIC_FORECASTING_SCORES + ` (
 		id SERIAL PRIMARY KEY,
 		height_tx BIGINT,
@@ -486,6 +504,7 @@ func createEventsTablesSQL() string {
 		score VARCHAR(255),
     	CONSTRAINT unique_topic_forecasting_scores_entry UNIQUE (topic_id, height_tx)
 	);
+	CREATE INDEX idx_topic_forecasting_scores_topic_id ON ` + TB_TOPIC_FORECASTING_SCORES + ` (topic_id);
 	`
 }
 
