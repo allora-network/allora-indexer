@@ -1341,6 +1341,7 @@ func insertTokenomics(events []EventRecord) error {
 	}
 	return nil
 }
+
 func isDataEmpty(table string) (bool, error) {
 	var count int
 	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", table)
