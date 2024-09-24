@@ -41,6 +41,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for all versions `v1.0.0` and beyond (still considered experimental prior to v1.0.0).
 
+## [Unreleased]
+
+### Added
+
+* [#31](https://github.com/allora-network/allora-indexer/pull/31) Update topic reward and forecast score on separate table
+* [#32](https://github.com/allora-network/allora-chain/pull/32) Add height to ema_scores, to keep historical ema_scores
+* [#33](https://github.com/allora-network/allora-chain/pull/33) Create indexes on topic_id
+
+### Removed
+
+### Fixed
+
+### Security
+
+
 ## 0.5.0
 
 ### Added
