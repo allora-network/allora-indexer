@@ -454,7 +454,7 @@ func createEventsTablesSQL() string {
 		address VARCHAR(255),
 		score NUMERIC(72,18),
 		is_active BOOLEAN,
-		CONSTRAINT unique_ema_score_entry UNIQUE (topic_id, type, address)
+		CONSTRAINT unique_ema_score_entry UNIQUE (topic_id, type, address, height)
 	);
 	CREATE TABLE IF NOT EXISTS ` + TB_ACTOR_LAST_COMMIT + ` (
 		id SERIAL PRIMARY KEY,
@@ -1267,7 +1267,7 @@ func insertEMAScore(events []EventRecord) error {
 	if len(insertStatements) > 0 {
 		sqlStatement := fmt.Sprintf(`
 			INSERT INTO %s (height_tx, height, topic_id, type, address, score, is_active) 
-			VALUES %s ON CONFLICT (topic_id, type, address)
+			VALUES %s ON CONFLICT (topic_id, type, address, height)
 			DO UPDATE SET score=EXCLUDED.score, is_active=EXCLUDED.is_active`, TB_EMASCORES,
 			strings.Join(insertStatements, ","))
 		log.Trace().Str("Event - Score SQL Statement", sqlStatement).Interface("Values", values).Msg("Executing batch insert for scores")
