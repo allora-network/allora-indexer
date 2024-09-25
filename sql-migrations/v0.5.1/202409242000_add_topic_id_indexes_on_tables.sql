@@ -1,3 +1,8 @@
+-- Step 0: Set maintenance parameters to optimize performance
+set maintenance_work_mem = '1GB';
+set max_parallel_workers = 16; 
+set max_parallel_maintenance_workers = 8;
+
 -- Index for TB_SCORES on topic_id
 CREATE INDEX idx_scores_topic_id ON scores (topic_id);
 
