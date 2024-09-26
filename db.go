@@ -1125,10 +1125,12 @@ func insertActorLastCommit(events []EventRecord) error {
 	if len(insertStatements) > 0 {
 		sqlStatement := fmt.Sprintf(`
 			INSERT INTO %s (height_tx, height, topic_id, is_worker) 
-			VALUES %s`, TB_ACTOR_LAST_COMMIT, strings.Join(insertStatements, ","))
+			VALUES %s ON CONFLICT (topic_id, is_worker) 
+			DO UPDATE SET height_tx=EXCLUDED.height_tx, height=EXCLUDED.height`, TB_ACTOR_LAST_COMMIT, strings.Join(insertStatements, ","))
+		log.Info().Str("Event - Last commit SQL Statement", sqlStatement).Interface("Values", values).Msg("Executing batch insert for last commit")
 		_, err := dbPool.Exec(context.Background(), sqlStatement, values...)
 		if err != nil {
-			return fmt.Errorf("failed to insert last commit event")
+			return fmt.Errorf("failed to insert last commit event: %w", err)
 		}
 	} else {
 		log.Info().Msg("No last commit event to insert")
@@ -1286,7 +1288,7 @@ func insertEMAScore(events []EventRecord) error {
 	if len(insertStatements) > 0 {
 		sqlStatement := fmt.Sprintf(`
 			INSERT INTO %s (height_tx, height, topic_id, type, address, score, is_active) 
-			VALUES %s ON CONFLICT (topic_id, type, address, height)
+			VALUES %s ON CONFLICT (topic_id, "type", address, height)
 			DO UPDATE SET score=EXCLUDED.score, is_active=EXCLUDED.is_active`, TB_EMASCORES,
 			strings.Join(insertStatements, ","))
 		log.Trace().Str("Event - Score SQL Statement", sqlStatement).Interface("Values", values).Msg("Executing batch insert for scores")

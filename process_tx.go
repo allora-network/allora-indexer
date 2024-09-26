@@ -305,8 +305,12 @@ func insertBulkWorkerPayload(blockHeight uint64, messageId uint64, inf types.Msg
 		}
 		block_height, err := strconv.Atoi(bundle.InferenceForecastsBundle.Inference.BlockHeight)
 		if err != nil {
-			log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to convert bundle.InferenceForecastsBundle.Inference.BlockHeight to int in insertInferenceForecasts")
-			return err
+			log.Info().Err(err).Uint64("block", blockHeight).Msg("No Inference found in bundle.InferenceForecastsBundle.Inference.BlockHeight, trying Forecast")
+			block_height, err = strconv.Atoi(bundle.InferenceForecastsBundle.Forecast.BlockHeight)
+			if err != nil {
+				log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to convert bundle.InferenceForecastsBundle.Forecast.BlockHeight to int in insertBulkWorkerPayload")
+				return err
+			}
 		}
 		waitCreation("block_info", "height", strconv.FormatUint(blockHeight, 10))
 		if err != nil {
@@ -315,7 +319,7 @@ func insertBulkWorkerPayload(blockHeight uint64, messageId uint64, inf types.Msg
 		}
 		err = insertWorkerDataBundle(messageId, blockHeight, block_height, topic_id, nonce_block_height, bundle)
 		if err != nil {
-			//log.Error().Err(err).Msg("height is still not exist in block_info blockHeight. Exiting...")
+			log.Error().Err(err).Msg("Error inserting insertWorkerDataBundle from insertBulkWorkerPayload. Exiting...")
 			return err
 		}
 	}
@@ -325,40 +329,48 @@ func insertBulkWorkerPayload(blockHeight uint64, messageId uint64, inf types.Msg
 
 func insertWorkerDataBundle(messageId, blockHeight uint64, block_height, topic_id, nonce_block_height int, bundle types.WorkerDataBundle) error {
 
-	inferenceTopicId, err := strconv.Atoi(bundle.InferenceForecastsBundle.Inference.TopicID)
+	bundleTopicId, err := strconv.Atoi(bundle.InferenceForecastsBundle.Inference.TopicID)
 	if err != nil {
-		log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to convert inference TopicId to int in insertMsgFundTopic")
-		return err
+		log.Info().Err(err).Uint64("block", blockHeight).Msg("No topicId found in bundle.InferenceForecastsBundle.Inference, trying Forecast")
+		bundleTopicId, err = strconv.Atoi(bundle.InferenceForecastsBundle.Forecast.TopicID)
+		if err != nil {
+			log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to convert inference TopicId to int in insertWorkerDataBundle")
+			return err
+		}
 	}
 	// Insert inference
-	log.Info().Msgf("Inserting inference nonce: %d, value: %s, topic_id: %d", nonce_block_height, bundle.InferenceForecastsBundle.Inference.Value, topic_id)
-	if _, err := strconv.ParseFloat(bundle.InferenceForecastsBundle.Inference.Value, 64); err == nil {
-		_, err := dbPool.Exec(context.Background(), `
-				INSERT INTO `+TB_INFERENCES+` (
-					message_height,
-					message_id,
-					nonce_block_height,
-					topic_id,
-					block_height,
-					inferer,
-					value,
-					extra_data
-				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-			blockHeight, messageId, nonce_block_height, topic_id,
-			block_height, bundle.InferenceForecastsBundle.Inference.Inferer,
-			bundle.InferenceForecastsBundle.Inference.Value, bundle.InferenceForecastsBundle.Inference.ExtraData,
-		)
-		if err != nil {
-			log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to insert inferences")
+	if bundle.InferenceForecastsBundle.Inference.Value != "" {
+		log.Info().Msgf("Inserting inference nonce: %d, value: %s, topic_id: %d", nonce_block_height, bundle.InferenceForecastsBundle.Inference.Value, topic_id)
+		if _, err := strconv.ParseFloat(bundle.InferenceForecastsBundle.Inference.Value, 64); err == nil {
+			_, err := dbPool.Exec(context.Background(), `
+					INSERT INTO `+TB_INFERENCES+` (
+						message_height,
+						message_id,
+						nonce_block_height,
+						topic_id,
+						block_height,
+						inferer,
+						value,
+						extra_data
+					) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+				blockHeight, messageId, nonce_block_height, topic_id,
+				block_height, bundle.InferenceForecastsBundle.Inference.Inferer,
+				bundle.InferenceForecastsBundle.Inference.Value, bundle.InferenceForecastsBundle.Inference.ExtraData,
+			)
+			if err != nil {
+				log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to insert inferences")
+				return err
+			}
+		} else {
+			log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to convert inference value")
 			return err
 		}
 	} else {
-		log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to convert inference value")
-		return err
+		log.Info().Uint64("block", blockHeight).Msg("No inference found in current bundle, now trying forecasts")
 	}
+
 	// Insert Forecasts
 	if len(bundle.InferenceForecastsBundle.Forecast.ForecastElements) > 0 {
-
 		var forecastId uint64
 		err := dbPool.QueryRow(context.Background(), `
 				INSERT INTO `+TB_FORECASTS+` (
@@ -395,7 +407,7 @@ func insertWorkerDataBundle(messageId, blockHeight uint64, block_height, topic_i
 		}
 	}
 
-	if inferenceTopicId != topic_id {
+	if bundleTopicId != topic_id {
 		log.Error().Msgf("Message TopicID not equal inference TopicID!!!!")
 	}
 
@@ -416,8 +428,12 @@ func insertWorkerPayload(blockHeight uint64, messageId uint64, inf types.MsgInse
 	}
 	block_height, err := strconv.Atoi(inf.WorkerDataBundle.InferenceForecastsBundle.Inference.BlockHeight)
 	if err != nil {
-		log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to convert bundle.InferenceForecastsBundle.Inference.BlockHeight to int in insertInferenceForecasts")
-		return err
+		log.Info().Err(err).Uint64("block", blockHeight).Msg("No Inference found in bundle.InferenceForecastsBundle.Inference.BlockHeight, trying Forecast")
+		block_height, err = strconv.Atoi(inf.WorkerDataBundle.InferenceForecastsBundle.Forecast.BlockHeight)
+		if err != nil {
+			log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to convert bundle.InferenceForecastsBundle.Forecast.BlockHeight to int in insertWorkerPayload")
+			return err
+		}
 	}
 	waitCreation("block_info", "height", strconv.FormatUint(blockHeight, 10))
 	if err != nil {
