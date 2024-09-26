@@ -1132,7 +1132,6 @@ func insertActorLastCommit(events []EventRecord) error {
 		if err != nil {
 			return fmt.Errorf("failed to insert last commit event: %w", err)
 		}
-
 	} else {
 		log.Info().Msg("No last commit event to insert")
 	}
