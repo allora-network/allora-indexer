@@ -72,6 +72,8 @@ const (
 	TB_EMASCORES                 = "ema_scores"
 	TB_ACTOR_LAST_COMMIT         = "last_commit_values"
 	TB_TOKENOMICS                = "tokenomics"
+	TB_TOPIC_REWARD              = "topic_rewards"
+	TB_TOPIC_FORECASTING_SCORES  = "topic_forecasting_scores"
 )
 
 var dbPool *pgxpool.Pool //*pgx.Conn
@@ -259,6 +261,8 @@ func createMessagesTablesSQL() string {
 		worker_libp2pkey VARCHAR(255),
 		is_reputer BOOLEAN
 	);
+	CREATE INDEX idx_worker_registrations_topic_id ON ` + TB_WORKER_REGISTRATIONS + ` (topic_id);
+
 
 	CREATE TABLE IF NOT EXISTS ` + TB_TRANSFERS + ` (
 		id SERIAL PRIMARY KEY,
@@ -270,6 +274,7 @@ func createMessagesTablesSQL() string {
 		amount VARCHAR(255),
 		denom VARCHAR(255)
 	);
+	CREATE INDEX idx_transfers_topic_id ON ` + TB_TRANSFERS + ` (topic_id);
 
 	CREATE TABLE IF NOT EXISTS ` + TB_INFERENCES + ` (
 		id SERIAL PRIMARY KEY,
@@ -283,6 +288,8 @@ func createMessagesTablesSQL() string {
 		extra_data TEXT,
 		proof TEXT
 	);
+	CREATE INDEX idx_inferences_topic_id ON ` + TB_INFERENCES + ` (topic_id);
+
 
 	CREATE TABLE IF NOT EXISTS ` + TB_FORECASTS + ` (
 		id SERIAL PRIMARY KEY,
@@ -300,6 +307,7 @@ func createMessagesTablesSQL() string {
 		value VARCHAR(255),
 		inferer VARCHAR(255)
 	);
+	CREATE INDEX idx_forecasts_topic_id ON ` + TB_FORECASTS + ` (topic_id);
 
 	CREATE TABLE IF NOT EXISTS ` + TB_REPUTER_PAYLOAD + ` (
 		id SERIAL PRIMARY KEY,
@@ -310,6 +318,7 @@ func createMessagesTablesSQL() string {
 		reputer_nonce_block_height INT,
 		topic_id INT
 	);
+	CREATE INDEX idx_reputer_payload_topic_id ON ` + TB_REPUTER_PAYLOAD + ` (topic_id);
 
 	CREATE TABLE IF NOT EXISTS ` + TB_REPUTER_BUNDLES + ` (
 		id SERIAL PRIMARY KEY,
@@ -324,6 +333,7 @@ func createMessagesTablesSQL() string {
 		reputer_request_worker_nonce  INT,
 		reputer_request_reputer_nonce  INT
 	);
+	CREATE INDEX idx_reputer_bundles_topic_id ON ` + TB_REPUTER_BUNDLES + ` (topic_id);
 
 	DO $$ BEGIN
 		CREATE TYPE reputerValueType AS ENUM(
@@ -402,6 +412,7 @@ func createEventsTablesSQL() string {
 		value NUMERIC(72,18),
 		CONSTRAINT unique_score_entry UNIQUE (height, topic_id, type, address)
 	);
+	CREATE INDEX idx_scores_topic_id ON ` + TB_SCORES + ` (topic_id);
 
 	CREATE TABLE IF NOT EXISTS ` + TB_REWARDS + ` (
 		id SERIAL PRIMARY KEY,
@@ -413,6 +424,7 @@ func createEventsTablesSQL() string {
 		value NUMERIC(72,18),
 		CONSTRAINT unique_reward_entry UNIQUE (height, topic_id, type, address)
 	);
+	CREATE INDEX idx_rewards_topic_id ON ` + TB_REWARDS + `  (topic_id);
 
 	CREATE TABLE IF NOT EXISTS ` + TB_NETWORKLOSSES + ` (
 		id SERIAL PRIMARY KEY,
@@ -423,6 +435,7 @@ func createEventsTablesSQL() string {
 		combined_value VARCHAR(255),
 		CONSTRAINT unique_networkloss_entry UNIQUE (height_tx, height, topic_id)
 	);
+	CREATE INDEX idx_networklosses_topic_id ON ` + TB_NETWORKLOSSES + ` (topic_id);
 
 	DO $$ BEGIN
 		CREATE TYPE networklossBundleValueType AS ENUM(
@@ -452,8 +465,10 @@ func createEventsTablesSQL() string {
 		address VARCHAR(255),
 		score NUMERIC(72,18),
 		is_active BOOLEAN,
-		CONSTRAINT unique_ema_score_entry UNIQUE (topic_id, type, address)
+		CONSTRAINT unique_ema_score_entry UNIQUE (topic_id, type, address, height)
 	);
+	CREATE INDEX idx_emascores_topic_id ON ` + TB_EMASCORES + ` (topic_id);
+
 	CREATE TABLE IF NOT EXISTS ` + TB_ACTOR_LAST_COMMIT + ` (
 		id SERIAL PRIMARY KEY,
 		height_tx BIGINT,
@@ -462,6 +477,8 @@ func createEventsTablesSQL() string {
 		is_worker BOOLEAN,
 		CONSTRAINT unique_actor_last_commit_entry UNIQUE (topic_id, is_worker)
 	);
+	CREATE INDEX idx_actor_last_commit_topic_id ON ` + TB_ACTOR_LAST_COMMIT + ` (topic_id);
+
 	CREATE TABLE IF NOT EXISTS ` + TB_TOKENOMICS + ` (
 		id SERIAL PRIMARY KEY,
 		height_tx BIGINT,
@@ -470,6 +487,24 @@ func createEventsTablesSQL() string {
 		emissions_amount NUMERIC(72,18),
 		ecosystem_mint_amount NUMERIC(72,18)
 	);
+
+	CREATE TABLE IF NOT EXISTS ` + TB_TOPIC_REWARD + ` (
+		id SERIAL PRIMARY KEY,
+		height_tx BIGINT,
+		topic_id INT,
+		reward VARCHAR(255),
+    	CONSTRAINT unique_topic_rewards_entry UNIQUE (topic_id, height_tx)
+	);
+	CREATE INDEX idx_topic_reward_topic_id ON ` + TB_TOPIC_REWARD + ` (topic_id);
+
+	CREATE TABLE IF NOT EXISTS ` + TB_TOPIC_FORECASTING_SCORES + ` (
+		id SERIAL PRIMARY KEY,
+		height_tx BIGINT,
+		topic_id INT,
+		score VARCHAR(255),
+    	CONSTRAINT unique_topic_forecasting_scores_entry UNIQUE (topic_id, height_tx)
+	);
+	CREATE INDEX idx_topic_forecasting_scores_topic_id ON ` + TB_TOPIC_FORECASTING_SCORES + ` (topic_id);
 	`
 }
 
@@ -520,7 +555,7 @@ func insertMessage(height uint64, mtype string, sender string, data string) (uin
 	// Write Topic to the database
 	var id uint64
 	var dataHash = hash(data)
-	log.Info().Msgf("Inserting message, hash: %d", height)
+	log.Info().Msgf("Inserting message, height: %d,hash: %d", height, dataHash)
 	err := dbPool.QueryRow(context.Background(), `
 		INSERT INTO `+TB_MESSAGES+` (
 			height,
@@ -536,6 +571,7 @@ func insertMessage(height uint64, mtype string, sender string, data string) (uin
 		dataHash,
 	).Scan(&id)
 	if err != nil {
+		log.Error().Msgf("Failed inserting message, height:%d, hash: %d", height, dataHash)
 		return 0, err
 	}
 
@@ -717,7 +753,7 @@ func insertEvents(events []EventRecord) error {
 
 	// Insert forecast task score if any
 	if len(forecastTaskScoreEvents) > 0 {
-		err := updateForecastTaskScore(forecastTaskScoreEvents)
+		err := insertForecastTaskScore(forecastTaskScoreEvents)
 		if err != nil {
 			log.Error().Err(err).Msg("failed to insert forecast task score")
 		}
@@ -733,7 +769,7 @@ func insertEvents(events []EventRecord) error {
 
 	// Insert topic reward if any
 	if len(topicRewardEvents) > 0 {
-		err := updateTopicReward(topicRewardEvents)
+		err := insertTopicReward(topicRewardEvents)
 		if err != nil {
 			log.Error().Err(err).Msg("failed to insert topic reward")
 		}
@@ -984,28 +1020,23 @@ func insertNetworkLoss(events []EventRecord) error {
 	return nil
 }
 
-func updateForecastTaskScore(events []EventRecord) error {
+func insertForecastTaskScore(events []EventRecord) error {
 	log.Info().Msg("Updating topic forecasting task score")
-	isExist, err := isColumnExist(TB_TOPICS, "forecast_task_score")
-	if err != nil {
-		return err
-	}
-	if !isExist {
-		err = addColumn(TB_TOPICS, "forecast_task_score", "BIGINT")
-		if err != nil {
-			return err
-		}
-	}
+	var insertStatements []string
+	var values []interface{}
+
+	placeholderCounter := 1 // Placeholder index starts at 1 in PostgreSQL
+
 	for _, event := range events {
-		log.Trace().Interface("Event topic forecast task reward", event).Msg("Processing event topic forecast task score")
+		log.Trace().Interface("Event topic forecast task score", event).Msg("Processing event topic forecast task score")
 		var attributes []Attribute
-		err = json.Unmarshal(event.Data, &attributes)
+		err := json.Unmarshal(event.Data, &attributes)
 		if err != nil {
 			return fmt.Errorf("failed to unmarshal event data: %w", err)
 		}
 
 		var topicID int
-		var score = new(big.Float)
+		var score string
 		for _, attr := range attributes {
 			switch attr.Key {
 			case "topic_id":
@@ -1015,20 +1046,25 @@ func updateForecastTaskScore(events []EventRecord) error {
 					return fmt.Errorf("failed to get topic id: %w", err)
 				}
 			case "score":
-				cleanedValue := strings.Trim(attr.Value, "\"")
-				_, ok := score.SetString(cleanedValue)
-				if !ok {
-					return fmt.Errorf("failed to unmarshal forecast task score: %w", err)
-				}
+				score = strings.Trim(attr.Value, "\"")
 			}
 		}
-		_, err = dbPool.Exec(context.Background(), `
-				UPDATE `+TB_TOPICS+` SET forecast_task_score = $1 WHERE id=$2`,
-			score, topicID,
-		)
+		newStmt := fmt.Sprintf("($%d, $%d, $%d)", placeholderCounter, placeholderCounter+1, placeholderCounter+2)
+		insertStatements = append(insertStatements, newStmt)
+		values = append(values, event.Height, topicID, score)
+		placeholderCounter += 3 // Increase counter for next row
+	}
+	if len(insertStatements) > 0 {
+		sqlStatement := fmt.Sprintf(`
+			INSERT INTO %s (height_tx,topic_id, score) 
+			VALUES %s`, TB_TOPIC_FORECASTING_SCORES, strings.Join(insertStatements, ","))
+		log.Trace().Str("Event - Topic forecasting task score SQL Statement", sqlStatement).Interface("Values", values).Msg("Executing batch insert for topic forecast task score")
+		_, err := dbPool.Exec(context.Background(), sqlStatement, values...)
 		if err != nil {
-			return fmt.Errorf("failed to update topic reward")
+			return fmt.Errorf("topic forecasting task score failed: %v", err)
 		}
+	} else {
+		log.Info().Msg("No topic forecasting task score to insert")
 	}
 	return nil
 }
@@ -1089,10 +1125,12 @@ func insertActorLastCommit(events []EventRecord) error {
 	if len(insertStatements) > 0 {
 		sqlStatement := fmt.Sprintf(`
 			INSERT INTO %s (height_tx, height, topic_id, is_worker) 
-			VALUES %s`, TB_ACTOR_LAST_COMMIT, strings.Join(insertStatements, ","))
+			VALUES %s ON CONFLICT (topic_id, is_worker) 
+			DO UPDATE SET height_tx=EXCLUDED.height_tx, height=EXCLUDED.height`, TB_ACTOR_LAST_COMMIT, strings.Join(insertStatements, ","))
+		log.Info().Str("Event - Last commit SQL Statement", sqlStatement).Interface("Values", values).Msg("Executing batch insert for last commit")
 		_, err := dbPool.Exec(context.Background(), sqlStatement, values...)
 		if err != nil {
-			return fmt.Errorf("failed to insert last commit event")
+			return fmt.Errorf("failed to insert last commit event: %w", err)
 		}
 	} else {
 		log.Info().Msg("No last commit event to insert")
@@ -1100,22 +1138,16 @@ func insertActorLastCommit(events []EventRecord) error {
 	return nil
 }
 
-func updateTopicReward(events []EventRecord) error {
+func insertTopicReward(events []EventRecord) error {
 	log.Info().Msg("Updating topic reward")
-	isExist, err := isColumnExist(TB_TOPICS, "reward")
-	if err != nil {
-		return err
-	}
-	if !isExist {
-		err = addColumn(TB_TOPICS, "reward", "NUMERIC(72,18)")
-		if err != nil {
-			return err
-		}
-	}
+	var insertStatements []string
+	var values []interface{}
+
+	placeholderCounter := 1 // Placeholder index starts at 1 in PostgreSQL
 	for _, event := range events {
 		log.Trace().Interface("Event topic reward", event).Msg("Processing event topic reward")
 		var attributes []Attribute
-		err = json.Unmarshal(event.Data, &attributes)
+		err := json.Unmarshal(event.Data, &attributes)
 		if err != nil {
 			return fmt.Errorf("failed to unmarshal event data: %w", err)
 		}
@@ -1140,15 +1172,27 @@ func updateTopicReward(events []EventRecord) error {
 			return fmt.Errorf("mismatch in length of topic ids and rewards")
 		}
 
-		for index, topic := range topicIDs {
-			_, err = dbPool.Exec(context.Background(), `
-				UPDATE `+TB_TOPICS+` SET reward = $1 WHERE id=$2`,
-				rewards[index].Text('f', -1), topic,
-			)
-			if err != nil {
-				return fmt.Errorf("failed to update topic reward")
-			}
+		for i := range topicIDs {
+			// Generate the placeholders for this row
+			newStmt := fmt.Sprintf("($%d, $%d, $%d)", placeholderCounter, placeholderCounter+1, placeholderCounter+2)
+			insertStatements = append(insertStatements, newStmt)
+			rewardValue := rewards[i].Text('f', -1)
+			values = append(values, event.Height, topicIDs[i], rewardValue)
+			placeholderCounter += 3 // Increase counter for next row
 		}
+	}
+
+	if len(insertStatements) > 0 {
+		sqlStatement := fmt.Sprintf(`
+			INSERT INTO %s (height_tx,topic_id, reward) 
+			VALUES %s`, TB_TOPIC_REWARD, strings.Join(insertStatements, ","))
+		log.Trace().Str("Event - Topic reward SQL Statement", sqlStatement).Interface("Values", values).Msg("Executing batch insert for topic reward")
+		_, err := dbPool.Exec(context.Background(), sqlStatement, values...)
+		if err != nil {
+			return fmt.Errorf("topic reward insert failed: %v", err)
+		}
+	} else {
+		log.Info().Msg("No topic reward data to insert")
 	}
 	return nil
 }
@@ -1244,7 +1288,7 @@ func insertEMAScore(events []EventRecord) error {
 	if len(insertStatements) > 0 {
 		sqlStatement := fmt.Sprintf(`
 			INSERT INTO %s (height_tx, height, topic_id, type, address, score, is_active) 
-			VALUES %s ON CONFLICT (topic_id, type, address)
+			VALUES %s ON CONFLICT (topic_id, "type", address, height)
 			DO UPDATE SET score=EXCLUDED.score, is_active=EXCLUDED.is_active`, TB_EMASCORES,
 			strings.Join(insertStatements, ","))
 		log.Trace().Str("Event - Score SQL Statement", sqlStatement).Interface("Values", values).Msg("Executing batch insert for scores")
