@@ -332,7 +332,7 @@ func insertWorkerDataBundle(messageId, blockHeight uint64, block_height, topic_i
 	bundleTopicId, err := strconv.Atoi(bundle.InferenceForecastsBundle.Inference.TopicID)
 	if err != nil {
 		log.Info().Err(err).Uint64("block", blockHeight).Msg("No topicId found in bundle.InferenceForecastsBundle.Inference, trying Forecast")
-		bundleTopicId, err = strconv.Atoi(bundle.InferenceForecastsBundle.Forecast.BlockHeight)
+		bundleTopicId, err = strconv.Atoi(bundle.InferenceForecastsBundle.Forecast.TopicID)
 		if err != nil {
 			log.Error().Err(err).Uint64("block", blockHeight).Msg("Failed to convert inference TopicId to int in insertWorkerDataBundle")
 			return err
