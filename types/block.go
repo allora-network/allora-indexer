@@ -49,7 +49,7 @@ type BlockInfo struct {
 				} `json:"part_set_header,omitempty"`
 			} `json:"block_id,omitempty"`
 			Signatures []struct {
-				BlockIDFlag      int       `json:"block_id_flag,omitempty"`
+				BlockIDFlag      string    `json:"block_id_flag,omitempty"`
 				ValidatorAddress string    `json:"validator_address,omitempty"`
 				Timestamp        time.Time `json:"timestamp,omitempty"`
 				Signature        string    `json:"signature,omitempty"`
@@ -95,7 +95,7 @@ type BlockInfo struct {
 				} `json:"part_set_header,omitempty"`
 			} `json:"block_id,omitempty"`
 			Signatures []struct {
-				BlockIDFlag      int       `json:"block_id_flag,omitempty"`
+				BlockIDFlag      string    `json:"block_id_flag,omitempty"`
 				ValidatorAddress string    `json:"validator_address,omitempty"`
 				Timestamp        time.Time `json:"timestamp,omitempty"`
 				Signature        string    `json:"signature,omitempty"`
