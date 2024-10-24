@@ -51,29 +51,31 @@ type DBBlockInfo struct {
 }
 
 const (
-	TB_EVENTS                    = "events"
-	TB_MESSAGES                  = "messages"
-	TB_BLOCK_INFO                = "block_info"
-	TB_CONSENSUS_PARAMS          = "consensus_params"
-	TB_TOPICS                    = "topics"
-	TB_ADDRESSES                 = "addresses"
-	TB_WORKER_REGISTRATIONS      = "worker_registrations"
-	TB_TRANSFERS                 = "transfers"
-	TB_INFERENCES                = "inferences"
-	TB_FORECASTS                 = "forecasts"
-	TB_FORECAST_VALUES           = "forecast_values"
-	TB_REPUTER_PAYLOAD           = "reputer_payload"
-	TB_REPUTER_BUNDLES           = "reputer_bundles"
-	TB_BUNDLE_VALUES             = "bundle_values"
-	TB_REWARDS                   = "rewards"
-	TB_SCORES                    = "scores"
-	TB_NETWORKLOSSES             = "networklosses"
-	TB_NETWORKLOSS_BUNDLE_VALUES = "networkloss_bundle_values"
-	TB_EMASCORES                 = "ema_scores"
-	TB_ACTOR_LAST_COMMIT         = "last_commit_values"
-	TB_TOKENOMICS                = "tokenomics"
-	TB_TOPIC_REWARD              = "topic_rewards"
-	TB_TOPIC_FORECASTING_SCORES  = "topic_forecasting_scores"
+	TB_EVENTS                        = "events"
+	TB_MESSAGES                      = "messages"
+	TB_BLOCK_INFO                    = "block_info"
+	TB_CONSENSUS_PARAMS              = "consensus_params"
+	TB_TOPICS                        = "topics"
+	TB_ADDRESSES                     = "addresses"
+	TB_WORKER_REGISTRATIONS          = "worker_registrations"
+	TB_TRANSFERS                     = "transfers"
+	TB_INFERENCES                    = "inferences"
+	TB_FORECASTS                     = "forecasts"
+	TB_FORECAST_VALUES               = "forecast_values"
+	TB_REPUTER_PAYLOAD               = "reputer_payload"
+	TB_REPUTER_BUNDLES               = "reputer_bundles"
+	TB_BUNDLE_VALUES                 = "bundle_values"
+	TB_REWARDS                       = "rewards"
+	TB_SCORES                        = "scores"
+	TB_NETWORKLOSSES                 = "networklosses"
+	TB_NETWORKLOSS_BUNDLE_VALUES     = "networkloss_bundle_values"
+	TB_EMASCORES                     = "ema_scores"
+	TB_ACTOR_LAST_COMMIT             = "last_commit_values"
+	TB_TOKENOMICS                    = "tokenomics"
+	TB_TOPIC_REWARD                  = "topic_rewards"
+	TB_TOPIC_FORECASTING_SCORES      = "topic_forecasting_scores"
+	TB_ECOSYSTEM_TOKEN_MINT          = "ecosystem_token_mint"
+	TB_REWARD_CURRENT_BLOCK_EMISSION = "reward_current_block_emission"
 )
 
 var dbPool *pgxpool.Pool //*pgx.Conn
@@ -505,6 +507,20 @@ func createEventsTablesSQL() string {
     	CONSTRAINT unique_topic_forecasting_scores_entry UNIQUE (topic_id, height_tx)
 	);
 	CREATE INDEX idx_topic_forecasting_scores_topic_id ON ` + TB_TOPIC_FORECASTING_SCORES + ` (topic_id);
+
+	CREATE TABLE IF NOT EXISTS ` + TB_ECOSYSTEM_TOKEN_MINT + ` (
+		id SERIAL PRIMARY KEY,
+		height_tx BIGINT,
+		block_height BIGINT,
+		token_amount NUMERIC(72,18),
+	);
+
+	CREATE TABLE IF NOT EXISTS ` + TB_REWARD_CURRENT_BLOCK_EMISSION + ` (
+		id SERIAL PRIMARY KEY,
+		height_tx BIGINT,
+		block_height BIGINT,
+		token_amount NUMERIC(72,18),
+	);
 	`
 }
 
@@ -664,6 +680,14 @@ func isTokenomicsEvent(event EventRecord) bool {
 	return isEventType(event.Type, "mint.v", "EventTokenomicsSet")
 }
 
+func isEcosystemTokenMintEvent(event EventRecord) bool {
+	return isEventType(event.Type, "mint.v", "EventEcosystemTokenMintSet")
+}
+
+func isRewardCurrentBlockEmissionEvent(event EventRecord) bool {
+	return isEventType(event.Type, "mint.v", "EventRewardCurrentBlockEmission")
+}
+
 func insertEvents(events []EventRecord) error {
 	var scoreEvents []EventRecord
 	var rewardEvents []EventRecord
@@ -673,6 +697,8 @@ func insertEvents(events []EventRecord) error {
 	var topicRewardEvents []EventRecord
 	var emaScoreEvents []EventRecord
 	var tokenomicsEvents []EventRecord
+	var ecosystemTokenMintEvents []EventRecord
+	var rewardCurrentBlockEmissionEvents []EventRecord
 	// For inserting events in batch:
 	var insertStatements []string
 	var values []interface{}
@@ -696,6 +722,10 @@ func insertEvents(events []EventRecord) error {
 			emaScoreEvents = append(emaScoreEvents, event) // Function to check if it's an ema score event
 		} else if isTokenomicsEvent(event) {
 			tokenomicsEvents = append(tokenomicsEvents, event) // Function to check if it's a tokenomics event
+		} else if isEcosystemTokenMintEvent(event) {
+			ecosystemTokenMintEvents = append(ecosystemTokenMintEvents, event) // Function to check if it's an ecosystem token mint event
+		} else if isRewardCurrentBlockEmissionEvent(event) {
+			rewardCurrentBlockEmissionEvents = append(rewardCurrentBlockEmissionEvents, event) // Function to check if it's a reward current block emission event
 		} else {
 			log.Info().Msg("Unrecognized event, ignoring")
 			continue
@@ -788,6 +818,22 @@ func insertEvents(events []EventRecord) error {
 		err := insertTokenomics(tokenomicsEvents)
 		if err != nil {
 			log.Error().Err(err).Msg("failed to insert tokenomics")
+		}
+	}
+
+	// Insert ecosystem token mint if any
+	if len(ecosystemTokenMintEvents) > 0 {
+		err := insertEcosystemTokenMint(ecosystemTokenMintEvents)
+		if err != nil {
+			log.Error().Err(err).Msg("failed to insert ecosystem token mint")
+		}
+	}
+
+	// Insert reward current block emission if any
+	if len(rewardCurrentBlockEmissionEvents) > 0 {
+		err := insertRewardCurrentBlockEmission(rewardCurrentBlockEmissionEvents)
+		if err != nil {
+			log.Error().Err(err).Msg("failed to insert reward current block emission")
 		}
 	}
 	return nil
@@ -1359,6 +1405,110 @@ func insertTokenomics(events []EventRecord) error {
 		}
 	} else {
 		log.Info().Msg("No tokenomics event to insert")
+	}
+	return nil
+}
+
+func insertEcosystemTokenMint(events []EventRecord) error {
+	log.Info().Msg("Inserting ecosystem token mint")
+	var insertStatements []string
+	var values []interface{}
+
+	placeholderCounter := 1 // Placeholder index starts at 1 in PostgreSQL
+	for _, event := range events {
+		log.Trace().Interface("Event ecosystem token mint", event).Msg("Processing event ecosystem token mint")
+		var attributes []Attribute
+		err := json.Unmarshal(event.Data, &attributes)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal event data: %w", err)
+		}
+
+		var tokenAmount = new(big.Float)
+		var blockHeight uint64
+		for _, attr := range attributes {
+			switch attr.Key {
+			case "token_amount":
+				cleanedValue := strings.Trim(attr.Value, "\"")
+				_, ok := tokenAmount.SetString(cleanedValue)
+				if !ok {
+					return fmt.Errorf("failed to get token amount: %w", err)
+				}
+			case "block_height":
+				cleanedValue := strings.Trim(attr.Value, "\"")
+				blockHeight, err = strconv.ParseUint(cleanedValue, 10, 64)
+				if err != nil {
+					return fmt.Errorf("failed to convert block_height to int: %w", err)
+				}
+			}
+		}
+		newStmt := fmt.Sprintf("($%d, $%d, $%d)", placeholderCounter, placeholderCounter+1, placeholderCounter+2)
+		insertStatements = append(insertStatements, newStmt)
+		values = append(values, event.Height, blockHeight, tokenAmount)
+		placeholderCounter += 3 // Increase counter for next row
+	}
+
+	if len(insertStatements) > 0 {
+		sqlStatement := fmt.Sprintf(`
+			INSERT INTO %s (height_tx, block_height, token_amount) 
+			VALUES %s`, TB_ECOSYSTEM_TOKEN_MINT, strings.Join(insertStatements, ","))
+		_, err := dbPool.Exec(context.Background(), sqlStatement, values...)
+		if err != nil {
+			return fmt.Errorf("failed to insert ecosystem token mint event")
+		}
+	} else {
+		log.Info().Msg("No ecosystem token mint event to insert")
+	}
+	return nil
+}
+
+func insertRewardCurrentBlockEmission(events []EventRecord) error {
+	log.Info().Msg("Inserting reward current block emission")
+	var insertStatements []string
+	var values []interface{}
+
+	placeholderCounter := 1 // Placeholder index starts at 1 in PostgreSQL
+	for _, event := range events {
+		log.Trace().Interface("Event reward current block emission", event).Msg("Processing event reward current block emission")
+		var attributes []Attribute
+		err := json.Unmarshal(event.Data, &attributes)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal event data: %w", err)
+		}
+
+		var tokenAmount = new(big.Float)
+		var blockHeight uint64
+		for _, attr := range attributes {
+			switch attr.Key {
+			case "token_amount":
+				cleanedValue := strings.Trim(attr.Value, "\"")
+				_, ok := tokenAmount.SetString(cleanedValue)
+				if !ok {
+					return fmt.Errorf("failed to get token amount: %w", err)
+				}
+			case "block_height":
+				cleanedValue := strings.Trim(attr.Value, "\"")
+				blockHeight, err = strconv.ParseUint(cleanedValue, 10, 64)
+				if err != nil {
+					return fmt.Errorf("failed to convert block_height to int: %w", err)
+				}
+			}
+		}
+		newStmt := fmt.Sprintf("($%d, $%d, $%d)", placeholderCounter, placeholderCounter+1, placeholderCounter+2)
+		insertStatements = append(insertStatements, newStmt)
+		values = append(values, event.Height, blockHeight, tokenAmount)
+		placeholderCounter += 3 // Increase counter for next row
+	}
+
+	if len(insertStatements) > 0 {
+		sqlStatement := fmt.Sprintf(`
+			INSERT INTO %s (height_tx, block_height, token_amount) 
+			VALUES %s`, TB_REWARD_CURRENT_BLOCK_EMISSION, strings.Join(insertStatements, ","))
+		_, err := dbPool.Exec(context.Background(), sqlStatement, values...)
+		if err != nil {
+			return fmt.Errorf("failed to insert reward current block emission event")
+		}
+	} else {
+		log.Info().Msg("No reward current block emission event to insert")
 	}
 	return nil
 }

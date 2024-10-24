@@ -6,14 +6,17 @@ import (
 
 func TestFilterEvents(t *testing.T) {
 	whitelist := map[string]EventProcessing{
-		"EventScoresSet":            {Type: ScoreEvent},
-		"EventRewardsSettled":       {Type: RewardEvent},
-		"EventNetworkLossSet":       {Type: NetworkLossEvent},
-		"EventForecastTaskScoreSet": {Type: ForecastTaskScoreEvent},
-		"EventWorkerLastCommitSet":  {Type: ActorLastCommitEvent},
-		"EventReputerLastCommitSet": {Type: ActorLastCommitEvent},
-		"EventTopicRewardsSet":      {Type: TopicRewardEvent},
-		"EventEMAScoresSet":         {Type: EMAScoreEvent},
+		"EventScoresSet":                  {Type: ScoreEvent},
+		"EventRewardsSettled":             {Type: RewardEvent},
+		"EventNetworkLossSet":             {Type: NetworkLossEvent},
+		"EventForecastTaskScoreSet":       {Type: ForecastTaskScoreEvent},
+		"EventWorkerLastCommitSet":        {Type: ActorLastCommitEvent},
+		"EventReputerLastCommitSet":       {Type: ActorLastCommitEvent},
+		"EventTopicRewardsSet":            {Type: TopicRewardEvent},
+		"EventEMAScoresSet":               {Type: EMAScoreEvent},
+		"EventTokenomicsSet":              {Type: TokenomicsEvent},
+		"EventEcosystemTokenMintSet":      {Type: EcosystemTokenMintEvent},
+		"EventRewardCurrentBlockEmission": {Type: RewardCurrentBlockEmissionEvent},
 	}
 
 	tests := []struct {
