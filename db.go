@@ -512,14 +512,14 @@ func createEventsTablesSQL() string {
 		id SERIAL PRIMARY KEY,
 		height_tx BIGINT,
 		block_height BIGINT,
-		token_amount NUMERIC(72,18),
+		token_amount NUMERIC(72,18)
 	);
 
 	CREATE TABLE IF NOT EXISTS ` + TB_REWARD_CURRENT_BLOCK_EMISSION + ` (
 		id SERIAL PRIMARY KEY,
 		height_tx BIGINT,
 		block_height BIGINT,
-		token_amount NUMERIC(72,18),
+		token_amount NUMERIC(72,18)
 	);
 	`
 }

@@ -23,7 +23,7 @@ func ExecuteCommand(cliApp, node string, parts []string) ([]byte, error) {
 	completeParts = replacePlaceholders(completeParts, "{node}", node)
 	completeParts = replacePlaceholders(completeParts, "{cliApp}", cliApp)
 
-	log.Debug().Strs("command", completeParts).Msg("Executing command")
+	log.Info().Strs("command", completeParts).Msg("Executing command")
 	cmd := exec.Command(completeParts[0], completeParts[1:]...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid: true,

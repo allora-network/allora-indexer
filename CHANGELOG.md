@@ -41,6 +41,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for all versions `v1.0.0` and beyond (still considered experimental prior to v1.0.0).
 
+
+## 0.6.0
+
+### Added
+
+* [#40](https://github.com/allora-network/allora-indexer/pull/40) Add support for allora chain v0.6.0
+
+### Removed
+
+### Fixed
+
+* [#41](https://github.com/allora-network/allora-indexer/pull/41) Fix docker image, table creation, block_id_flag type
+
+### Security
+
+
 ## 0.5.1
 
 ### Added
